@@ -1,0 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-void: 9 13 16;
+  --surface: 20 23 28;
+  --surface-raised: 28 32 39;
+  --border-hair: 38 43 51;
+  --ink: 232 234 237;
+  --ink-muted: 139 146 160;
+  --signal-amber: 232 163 61;
+  --signal-teal: 52 209 166;
+  --signal-red: 229 72 77;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: rgb(var(--bg-void));
+  color: rgb(var(--ink));
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+::selection {
+  background-color: rgb(var(--signal-amber) / 0.3);
+}
+
+/* Foco de teclado visible, siempre */
+:focus-visible {
+  outline: 2px solid rgb(var(--signal-amber));
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.font-mono-data {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Elemento de firma: barrido de radar, usado en el logo y en estados de carga */
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.radar-sweep {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgb(var(--signal-amber) / 0.55) 40deg,
+    transparent 90deg
+  );
+  animation: radar-sweep 2.4s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep {
+    animation: none;
+  }
+}

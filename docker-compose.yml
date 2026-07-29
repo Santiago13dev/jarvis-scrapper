@@ -1,0 +1,80 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: prospectai_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-prospectai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-prospectai}
+      POSTGRES_DB: ${POSTGRES_DB:-prospectai}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-prospectai}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: prospectai_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prospectai_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: prospectai_frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+  # Integración externa: gosom/google-maps-scraper.
+  # Se invoca bajo demanda desde el backend (ScraperProvider), no se modifica su código.
+  google-maps-scraper:
+    build:
+      context: ./integrations/google-maps-scraper
+      dockerfile: Dockerfile
+    container_name: prospectai_scraper
+    restart: "no"
+    profiles: ["scraper"]  # se levanta explícitamente: docker compose --profile scraper up
+    volumes:
+      - ./integrations/google-maps-scraper/results:/app/results
+
+volumes:
+  postgres_data:
+  redis_data:
