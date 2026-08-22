@@ -110,6 +110,7 @@ async def import_leads(
             keyword=body.keyword,
             location=body.location,
             max_results=body.max_results,
+            depth=body.depth,
         )
     )
     await session.commit()
@@ -187,3 +188,17 @@ async def export_leads(
         ExportLeadsRequest(workspace_id=workspace_id, lead_ids=body.lead_ids, fmt=body.format)
     )
     return ExportLeadsResponse(file_url=result.file_url, total_exported=result.total_exported)
+
+
+@router.delete("/{lead_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def delete_lead(
+    workspace_id: WorkspaceId,
+    lead_id: str,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    lead_repository: Annotated[LeadRepository, Depends(get_lead_repository)],
+) -> None:
+    lead = await lead_repository.get_by_id(workspace_id, lead_id)
+    if lead is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Lead no encontrado")
+    await lead_repository.delete(workspace_id, lead_id)
+    await session.commit()

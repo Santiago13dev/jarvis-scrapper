@@ -32,6 +32,7 @@ class ImportLeadsBody(BaseModel):
     keyword: str
     location: str
     max_results: int = 100
+    depth: int = 1
 
 
 class ImportLeadsResponse(BaseModel):

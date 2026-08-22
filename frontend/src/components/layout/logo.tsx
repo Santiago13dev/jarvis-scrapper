@@ -1,14 +1,15 @@
-/**
- * Marca de ProspectAI: un punto de señal detectado sobre un barrido de radar
- * (mismo lenguaje visual que el ScoreRing), en vez de un logotipo genérico.
- */
+"use client";
+
+import { cn } from "@/lib/utils";
+
 export function Logo({ className }: { className?: string }) {
   return (
-    <div className={className}>
-      <div className="relative flex h-8 w-8 items-center justify-center rounded-full border border-hairline bg-surface-raised overflow-hidden">
-        <div className="radar-sweep absolute inset-0 rounded-full" />
-        <div className="relative h-1.5 w-1.5 rounded-full bg-signal-amber shadow-[0_0_6px_1px_rgba(232,163,61,0.7)]" />
-      </div>
+    <div className={cn("relative flex h-9 w-9 items-center justify-center", className)}>
+      {/* Diamond shape */}
+      <div className="absolute inset-0 rotate-45 rounded-lg bg-accent/20 border border-accent/30" />
+      <div className="absolute inset-[3px] rotate-45 rounded-md bg-accent/30" />
+      {/* Center dot */}
+      <div className="relative h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_8px_rgba(130,90,255,0.6)]" />
     </div>
   );
 }

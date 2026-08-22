@@ -43,3 +43,36 @@ class PostgresTemplateRepository(TemplateRepository):
     async def get_demo_page_template(self, template_id: str) -> DemoPageTemplate | None:
         model = await self._session.get(DemoPageTemplateModel, template_id)
         return DemoPageTemplateMapper.to_entity(model) if model else None
+
+    async def delete_message_template(self, workspace_id: str, template_id: str) -> bool:
+        stmt = select(MessageTemplateModel).where(
+            MessageTemplateModel.id == template_id,
+            MessageTemplateModel.workspace_id == workspace_id,
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        if model is None:
+            return False
+        await self._session.delete(model)
+        return True
+
+    async def get_message_template(self, workspace_id: str, template_id: str) -> MessageTemplate | None:
+        stmt = select(MessageTemplateModel).where(
+            MessageTemplateModel.id == template_id,
+            MessageTemplateModel.workspace_id == workspace_id,
+        )
+        result = await self._session.execute(stmt)
+        model = result.scalar_one_or_none()
+        return MessageTemplateMapper.to_entity(model) if model else None
+
+    async def update_message_template(
+        self, workspace_id: str, template: MessageTemplate
+    ) -> MessageTemplate:
+        model = await self._session.get(MessageTemplateModel, template.id)
+        if model is None or model.workspace_id != workspace_id:
+            raise ValueError(f"Template {template.id} no encontrado en workspace {workspace_id}")
+        model.name = template.name
+        model.content = template.content
+        model.variables = template.variables
+        await self._session.flush()
+        return MessageTemplateMapper.to_entity(model)

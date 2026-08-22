@@ -111,3 +111,17 @@ async def change_campaign_status(
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     await session.commit()
     return _to_response(campaign)
+
+
+@router.delete("/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
+async def delete_campaign(
+    workspace_id: WorkspaceId,
+    campaign_id: str,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    campaign_repository: Annotated[CampaignRepository, Depends(get_campaign_repository)],
+) -> None:
+    campaign = await campaign_repository.get_by_id(workspace_id, campaign_id)
+    if campaign is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Campaña no encontrada")
+    await campaign_repository.delete(workspace_id, campaign_id)
+    await session.commit()

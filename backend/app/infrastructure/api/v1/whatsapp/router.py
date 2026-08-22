@@ -135,7 +135,7 @@ async def get_conversation(
     return _to_response(conversation)
 
 
-@router.post("/conversations/{conversation_id}/transfer", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/conversations/{conversation_id}/transfer", status_code=status.HTTP_200_OK)
 async def transfer_conversation(
     workspace_id: WorkspaceId,
     conversation_id: str,

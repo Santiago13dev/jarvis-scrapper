@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Response, status as http_status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.ports.repositories.template_repository import TemplateRepository
@@ -63,6 +63,38 @@ async def create_message_template(
     created = await template_repository.create_message_template(workspace_id, template)
     await session.commit()
     return _message_template_to_response(created)
+
+
+@router.delete("/messages/{template_id}", status_code=204, response_class=Response)
+async def delete_message_template(
+    workspace_id: WorkspaceId,
+    template_id: str,
+    template_repository: Annotated[TemplateRepository, Depends(get_template_repository)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+):
+    deleted = await template_repository.delete_message_template(workspace_id, template_id)
+    if not deleted:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Plantilla no encontrada")
+    await session.commit()
+
+
+@router.patch("/messages/{template_id}", response_model=MessageTemplateResponse)
+async def update_message_template(
+    workspace_id: WorkspaceId,
+    template_id: str,
+    body: CreateMessageTemplateBody,
+    template_repository: Annotated[TemplateRepository, Depends(get_template_repository)],
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> MessageTemplateResponse:
+    existing = await template_repository.get_message_template(workspace_id, template_id)
+    if existing is None:
+        raise HTTPException(http_status.HTTP_404_NOT_FOUND, "Plantilla no encontrada")
+    existing.name = body.name
+    existing.content = body.content
+    existing.variables = body.variables
+    updated = await template_repository.update_message_template(workspace_id, existing)
+    await session.commit()
+    return _message_template_to_response(updated)
 
 
 @router.get("/demo-pages", response_model=list[DemoPageTemplateResponse])

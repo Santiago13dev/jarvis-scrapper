@@ -1,16 +1,18 @@
 """
-Hashing de contraseñas. Único lugar del proyecto que conoce passlib/bcrypt.
+Hashing de contraseñas. Único lugar del proyecto que conoce bcrypt.
 """
 from __future__ import annotations
 
-from passlib.context import CryptContext
+import hashlib
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import bcrypt
 
 
 def hash_password(plain_password: str) -> str:
-    return _pwd_context.hash(plain_password)
+    digest = hashlib.sha256(plain_password.encode("utf-8")).digest()
+    return bcrypt.hashpw(digest, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return _pwd_context.verify(plain_password, hashed_password)
+    digest = hashlib.sha256(plain_password.encode("utf-8")).digest()
+    return bcrypt.checkpw(digest, hashed_password.encode("utf-8"))

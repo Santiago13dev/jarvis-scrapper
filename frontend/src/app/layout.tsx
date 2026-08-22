@@ -19,7 +19,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProspectAI",
+  title: "JarvisIA",
   description: "Consola de prospección comercial para agencias.",
 };
 

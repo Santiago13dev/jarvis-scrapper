@@ -33,6 +33,7 @@ class ImportLeadsFromScraperUseCase:
                 keyword=request.keyword,
                 location=request.location,
                 max_results=request.max_results,
+                depth=request.depth,
             )
         )
 

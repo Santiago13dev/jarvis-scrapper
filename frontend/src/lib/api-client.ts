@@ -1,5 +1,5 @@
 /**
- * Cliente HTTP mínimo hacia la API de ProspectAI. Sin dependencias externas
+ * Cliente HTTP mínimo hacia la API de JarvisIA. Sin dependencias externas
  * (fetch nativo); centraliza base URL, auth header y manejo de errores.
  */
 
@@ -17,7 +17,7 @@ export class ApiError extends Error {
 
 function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("prospectai_access_token");
+  return window.localStorage.getItem("jarvisia_access_token");
 }
 
 export async function apiFetch<T>(
@@ -51,6 +51,9 @@ export const api = {
   get: <T>(path: string) => apiFetch<T>(path, { method: "GET" }),
   post: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
+  put: <T>(path: string, body?: unknown) =>
+    apiFetch<T>(path, { method: "PUT", body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body?: unknown) =>
     apiFetch<T>(path, { method: "PATCH", body: body ? JSON.stringify(body) : undefined }),
+  delete: <T>(path: string) => apiFetch<T>(path, { method: "DELETE" }),
 };

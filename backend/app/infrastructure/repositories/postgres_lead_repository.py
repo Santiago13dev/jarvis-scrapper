@@ -44,8 +44,12 @@ class PostgresLeadRepository(LeadRepository):
         return [LeadMapper.to_entity(m) for m in result.scalars().all()]
 
     async def find_duplicate(self, workspace_id: str, raw_source_id: str) -> Lead | None:
-        stmt = select(LeadModel).where(
-            LeadModel.workspace_id == workspace_id, LeadModel.raw_source_id == raw_source_id
+        stmt = (
+            select(LeadModel)
+            .where(
+                LeadModel.workspace_id == workspace_id, LeadModel.raw_source_id == raw_source_id
+            )
+            .options(selectinload(LeadModel.notes), selectinload(LeadModel.tasks))
         )
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
@@ -74,7 +78,17 @@ class PostgresLeadRepository(LeadRepository):
         models = [LeadMapper.to_model(lead) for lead in leads]
         self._session.add_all(models)
         await self._session.flush()
-        return [LeadMapper.to_entity(m) for m in models]
+        ids = [m.id for m in models]
+        if not ids:
+            return []
+        stmt = (
+            select(LeadModel)
+            .where(LeadModel.id.in_(ids))
+            .options(selectinload(LeadModel.notes), selectinload(LeadModel.tasks))
+        )
+        result = await self._session.execute(stmt)
+        loaded = result.scalars().all()
+        return [LeadMapper.to_entity(m) for m in loaded]
 
     async def delete(self, workspace_id: str, lead_id: str) -> None:
         model = await self._session.get(LeadModel, lead_id)

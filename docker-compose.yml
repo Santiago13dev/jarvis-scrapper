@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -45,6 +43,8 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
@@ -63,18 +63,55 @@ services:
       - ./frontend:/app
       - /app/node_modules
 
-  # Integración externa: gosom/google-maps-scraper.
-  # Se invoca bajo demanda desde el backend (ScraperProvider), no se modifica su código.
+  # Integración externa: gosom/google-maps-scraper en modo web (API HTTP + SQLite).
+  # Se levanta como servicio permanente; el backend lo consume vía HTTP.
   google-maps-scraper:
     build:
       context: ./integrations/google-maps-scraper
       dockerfile: Dockerfile
     container_name: prospectai_scraper
-    restart: "no"
-    profiles: ["scraper"]  # se levanta explícitamente: docker compose --profile scraper up
+    restart: unless-stopped
+    command: ["-web", "-addr", ":8080", "-data-folder", "/app/data"]
+    ports:
+      - "8080:8080"
     volumes:
-      - ./integrations/google-maps-scraper/results:/app/results
+      - scraper_data:/app/data
+
+  # Worker ARQ: procesa jobs encolados (envío de campañas WhatsApp, etc.)
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: prospectai_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: arq app.infrastructure.workers.worker_settings.WorkerSettings
+    volumes:
+      - ./backend:/app
+
+  # Servidor OpenWA (@open-wa/wa-automate): conecta con WhatsApp Web vía Chromium.
+  # Escaneá el QR con tu celular la primera vez; la sesión queda guardada en openwa_data.
+  openwa:
+    build:
+      context: ./integrations/openwa
+      dockerfile: Dockerfile
+    container_name: prospectai_openwa
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    environment:
+      - WA_SESSION=main
+    volumes:
+      - openwa_data:/data
 
 volumes:
   postgres_data:
   redis_data:
+  scraper_data:
+  openwa_data:

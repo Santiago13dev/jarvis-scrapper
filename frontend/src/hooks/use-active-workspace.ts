@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api-client";
 import type { Workspace } from "@/types/api";
 
-const STORAGE_KEY = "prospectai_workspace_id";
+const STORAGE_KEY = "jarvisia_workspace_id";
 
 /**
  * Resuelve el workspace activo: lo lee de localStorage si ya fue elegido, o

@@ -31,5 +31,19 @@ class TemplateRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    async def delete_message_template(self, workspace_id: str, template_id: str) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def get_message_template(self, workspace_id: str, template_id: str) -> "MessageTemplate | None":
+        raise NotImplementedError
+
+    @abstractmethod
+    async def update_message_template(
+        self, workspace_id: str, template: "MessageTemplate"
+    ) -> "MessageTemplate":
+        raise NotImplementedError
+
+    @abstractmethod
     async def get_demo_page_template(self, template_id: str) -> "DemoPageTemplate | None":
         raise NotImplementedError

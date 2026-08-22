@@ -14,6 +14,7 @@ class ImportLeadsRequest:
     keyword: str
     location: str
     max_results: int = 100
+    depth: int = 1
 
 
 @dataclass(frozen=True)

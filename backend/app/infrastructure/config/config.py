@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     openwa_api_key: str = ""
 
     scraper_results_path: str = "./integrations/google-maps-scraper/results"
+    scraper_api_url: str = "http://google-maps-scraper:8080"
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

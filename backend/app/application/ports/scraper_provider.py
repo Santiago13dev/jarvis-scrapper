@@ -31,6 +31,7 @@ class ScrapeQuery:
     location: str
     max_results: int = 100
     language: str | None = None
+    depth: int = 1
 
 
 class ScraperProvider(ABC):
