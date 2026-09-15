@@ -28,6 +28,8 @@ class GoogleMapsScraperAdapter(ScraperProvider):
     def __init__(self, base_url: str | None = None) -> None:
         settings = get_settings()
         self._base_url = (base_url or settings.scraper_api_url).rstrip("/")
+        self._latitude = settings.scraper_latitude
+        self._longitude = settings.scraper_longitude
 
     async def search(self, query: ScrapeQuery) -> Sequence[ScrapedBusiness]:
         keyword = f"{query.keyword} {query.location}"
@@ -37,8 +39,8 @@ class GoogleMapsScraperAdapter(ScraperProvider):
             "keywords": [keyword],
             "lang": query.language or "es",
             "zoom": 15,
-            "lat": str(settings.scraper_latitude),
-            "lon": str(settings.scraper_longitude),
+            "lat": str(self._latitude),
+            "lon": str(self._longitude),
             "fast_mode": False,
             "radius": 10000,
             "depth": query.depth,
