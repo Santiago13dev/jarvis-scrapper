@@ -15,7 +15,7 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     if (!workspaceId) return;
-    api.get<Conversation[]>(`/workspaces/${workspaceId}/conversations`)
+    api.get<Conversation[]>(`/workspaces/${workspaceId}/whatsapp/conversations`)
       .then(setConversations)
       .catch((err) => setError(err instanceof Error ? err.message : "Error"));
   }, [workspaceId]);

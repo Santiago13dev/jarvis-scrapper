@@ -43,7 +43,7 @@ export default function CampaignsPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         <div>
           <h1 className="font-display text-xl font-bold text-ink">Campañas</h1>
           <p className="text-[12px] text-ink-muted mt-0.5">Secuencias automatizadas de outreach por WhatsApp</p>
@@ -52,13 +52,13 @@ export default function CampaignsPage() {
         {error && <div className="rounded-xl border border-red/30 bg-red/10 p-4 text-[13px] text-red">{error}</div>}
 
         {campaigns && campaigns.length > 0 && (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
             {[
               { label: "Total", value: campaigns.length, icon: Megaphone, color: "bg-accent/15 text-accent" },
               { label: "Activas", value: campaigns.filter((c) => c.status === "running").length, icon: Play, color: "bg-teal/15 text-teal" },
               { label: "Borradores", value: campaigns.filter((c) => c.status === "draft").length, icon: Clock, color: "bg-amber/15 text-amber" },
             ].map((s) => (
-              <div key={s.label} className="rounded-xl border border-border/40 bg-card p-4">
+              <div key={s.label} className="rounded-lg border border-border/40 bg-card p-4">
                 <div className="flex items-center gap-3">
                   <div className={`rounded-lg p-2 ${s.color}`}><s.icon size={16} /></div>
                   <div>
@@ -90,29 +90,29 @@ export default function CampaignsPage() {
             else if (campaign.status === "paused") { actions.push({ action: "resume", icon: Play, label: "Reanudar", variant: "primary" }); actions.push({ action: "finish", icon: Square, label: "Finalizar", variant: "secondary" }); }
 
             return (
-              <div key={campaign.id} className="group rounded-xl border border-border/40 bg-card p-5 transition-all hover:border-accent/20 hover:bg-card-hover">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
+              <div key={campaign.id} className="group rounded-lg border border-border/40 bg-card p-4 transition-all hover:border-accent/20 hover:bg-card-hover sm:p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
                     <div className="rounded-lg bg-accent/15 p-2.5"><Megaphone size={16} className="text-accent" /></div>
-                    <div>
-                      <div className="flex items-center gap-2.5">
-                        <p className="font-medium text-ink text-[13px]">{campaign.name}</p>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <p className="truncate font-medium text-ink text-[13px]">{campaign.name}</p>
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${STATUS_COLORS[campaign.status] || ""}`}>{campaign.status}</span>
                       </div>
-                      <div className="flex items-center gap-3 mt-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-3">
                         <span className="flex items-center gap-1 text-[11px] text-ink-muted"><Users size={10} />{campaign.lead_ids.length} leads</span>
                         <span className="text-ink-dim">·</span>
                         <span className="text-[11px] text-ink-dim">{new Date(campaign.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {actions.map((a) => { const Icon = a.icon; return (
                       <Button key={a.action} variant={a.variant} onClick={() => handleAction(campaign.id, a.action)} className="text-[12px]">
                         <Icon size={13} />{a.label}
                       </Button>
                     ); })}
-                    <Button variant="ghost" className="text-red hover:text-red/80 hover:bg-red/10 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => setDeleteConfirmId(campaign.id)}>
+                    <Button variant="ghost" className="text-red hover:text-red/80 hover:bg-red/10 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" onClick={() => setDeleteConfirmId(campaign.id)}>
                       <Trash2 size={13} />
                     </Button>
                   </div>

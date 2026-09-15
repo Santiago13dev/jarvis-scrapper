@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
+import { LiveDashboard } from "@/components/dashboard/live-dashboard";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
 import type { DashboardSummary } from "@/types/api";
@@ -180,7 +181,7 @@ const SAMPLE_LEADS = [
   },
 ];
 
-export default function DashboardPage() {
+function LegacyDashboardPage() {
   const { workspaceId, loading: workspaceLoading } = useActiveWorkspace();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -197,7 +198,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="space-y-6">
+      <div className="space-y-4 sm:space-y-6">
         {/* Stat Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {STAT_CONFIG.map((stat) => {
@@ -206,7 +207,7 @@ export default function DashboardPage() {
             return (
               <div
                 key={stat.key}
-                className="rounded-xl border border-border/40 bg-card p-5 transition-all hover:border-accent/20 hover:bg-card-hover"
+                className="rounded-lg border border-border/40 bg-card p-4 transition-all hover:border-accent/20 hover:bg-card-hover sm:p-5"
               >
                 <div className="flex items-start justify-between">
                   <div className={`rounded-lg p-2.5 ${stat.color}`}>
@@ -234,8 +235,8 @@ export default function DashboardPage() {
         {/* Middle section: Activity panel + Map area */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-5">
           {/* Activity / Scraper panel */}
-          <div className="lg:col-span-3 rounded-xl border border-border/40 bg-card p-5">
-            <div className="flex items-center justify-between mb-4">
+          <div className="rounded-lg border border-border/40 bg-card p-4 sm:p-5 lg:col-span-3">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="font-display text-sm font-bold text-ink">Google Maps Scraper</h3>
                 <p className="text-[11px] text-ink-muted mt-0.5">Restaurantes en Bogotá, Colombia</p>
@@ -246,7 +247,7 @@ export default function DashboardPage() {
               </span>
             </div>
 
-            <div className="flex items-center gap-6 mb-4">
+            <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:flex sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-ink-dim uppercase tracking-wider">Fecha</span>
                 <span className="text-[12px] text-ink font-medium">15 Mayo 2024</span>
@@ -276,16 +277,16 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
-              <button className="flex items-center gap-2 rounded-lg border border-border/50 bg-input px-4 py-2 text-[12px] font-medium text-ink-muted hover:text-ink hover:border-border transition-colors">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <button className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-2 text-[12px] font-medium text-ink-muted hover:text-ink hover:border-border transition-colors sm:flex-none sm:px-4">
                 <BarChart3 size={14} />
                 Ver detalles
               </button>
-              <button className="flex items-center gap-2 rounded-lg border border-border/50 bg-input px-4 py-2 text-[12px] font-medium text-ink-muted hover:text-ink hover:border-border transition-colors">
+              <button className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-2 text-[12px] font-medium text-ink-muted hover:text-ink hover:border-border transition-colors sm:flex-none sm:px-4">
                 <Users size={14} />
                 Ver leads (1,250)
               </button>
-              <button className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors">
+              <button className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors sm:flex-none sm:px-4">
                 <Download size={14} />
                 Exportar
               </button>
@@ -293,7 +294,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Bogotá Map */}
-          <div className="lg:col-span-2 rounded-xl border border-border/40 bg-card overflow-hidden relative min-h-[280px]">
+          <div className="relative min-h-[280px] overflow-hidden rounded-lg border border-border/40 bg-card lg:col-span-2">
             <BogotaMap className="h-full w-full" />
             {/* Overlay controls */}
             <div className="absolute top-3 left-3 z-[400] flex items-center gap-1.5">
@@ -311,18 +312,18 @@ export default function DashboardPage() {
         </div>
 
         {/* Leads table */}
-        <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-border/30">
+        <div className="overflow-hidden rounded-lg border border-border/40 bg-card">
+          <div className="flex flex-col gap-3 border-b border-border/30 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <h3 className="font-display text-sm font-bold text-ink">
               Leads extraídos <span className="text-ink-muted font-normal">(1,250)</span>
             </h3>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-1.5">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-1.5 sm:flex-none">
                 <Search size={13} className="text-ink-dim" />
                 <input
                   type="text"
                   placeholder="Buscar negocio..."
-                  className="bg-transparent text-[12px] text-ink placeholder:text-ink-dim outline-none w-40"
+                  className="w-full min-w-0 bg-transparent text-[12px] text-ink outline-none placeholder:text-ink-dim sm:w-40"
                 />
               </div>
               <button className="rounded-lg border border-border/50 bg-input px-3 py-1.5 text-[11px] font-medium text-ink-muted hover:text-ink transition-colors">
@@ -334,7 +335,8 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <table className="w-full text-left text-[12px]">
+          <div className="overflow-x-auto">
+          <table className="min-w-[860px] w-full text-left text-[12px]">
             <thead>
               <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-ink-dim">
                 <th className="px-5 py-3 font-medium w-8">
@@ -382,14 +384,15 @@ export default function DashboardPage() {
               ))}
             </tbody>
           </table>
+          </div>
 
           {/* Pagination */}
-          <div className="flex items-center justify-between px-5 py-3 border-t border-border/30">
+          <div className="flex flex-col gap-3 border-t border-border/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <span className="text-[11px] text-ink-dim">Mostrando 1 a 7 de 1,250 resultados</span>
             <div className="flex items-center gap-1.5">
-              {[1, 2, 3, "...", 179].map((page, i) => (
+              {[1, 2, 3].map((page) => (
                 <button
-                  key={i}
+                  key={page}
                   className={`h-7 min-w-[28px] rounded-md px-2 text-[11px] font-medium transition-colors ${
                     page === 1
                       ? "bg-accent text-white"
@@ -406,7 +409,7 @@ export default function DashboardPage() {
         {/* Charts row */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           {/* Area chart */}
-          <div className="rounded-xl border border-border/40 bg-card p-5">
+          <div className="rounded-lg border border-border/40 bg-card p-4 sm:p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display text-sm font-bold text-ink">Negocios extraídos</h3>
               <span className="text-[10px] text-ink-dim border border-border/30 rounded px-2 py-0.5">Diario</span>
@@ -436,11 +439,11 @@ export default function DashboardPage() {
           </div>
 
           {/* Pie chart */}
-          <div className="rounded-xl border border-border/40 bg-card p-5">
+          <div className="rounded-lg border border-border/40 bg-card p-4 sm:p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display text-sm font-bold text-ink">Negocios por categoría</h3>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <ResponsiveContainer width={140} height={140}>
                 <PieChart>
                   <Pie
@@ -458,11 +461,11 @@ export default function DashboardPage() {
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
-              <div className="space-y-2">
+              <div className="min-w-0 flex-1 space-y-2">
                 {PIE_DATA.map((item) => (
                   <div key={item.name} className="flex items-center gap-2">
                     <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color }} />
-                    <span className="text-[11px] text-ink-muted">{item.name}</span>
+                    <span className="truncate text-[11px] text-ink-muted">{item.name}</span>
                     <span className="text-[11px] text-ink font-medium ml-auto">{item.value}%</span>
                   </div>
                 ))}
@@ -471,7 +474,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Bar chart */}
-          <div className="rounded-xl border border-border/40 bg-card p-5">
+          <div className="rounded-lg border border-border/40 bg-card p-4 sm:p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-display text-sm font-bold text-ink">Leads por fuente</h3>
               <span className="text-[10px] text-ink-dim border border-border/30 rounded px-2 py-0.5">Este mes</span>
@@ -501,4 +504,8 @@ export default function DashboardPage() {
       </div>
     </AppShell>
   );
+}
+
+export default function DashboardPage() {
+  return <AppShell><LiveDashboard /></AppShell>;
 }

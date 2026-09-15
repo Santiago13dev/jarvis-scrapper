@@ -54,12 +54,12 @@ export default function TemplatesPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <h1 className="font-display text-xl font-bold text-ink">Plantillas</h1>
             <p className="text-[12px] text-ink-muted mt-0.5">Mensajes predefinidos para campañas de outreach</p>
           </div>
-          <Button onClick={openCreateModal} className="bg-accent hover:bg-accent-hover text-white"><Plus size={14} /> Nueva plantilla</Button>
+          <Button onClick={openCreateModal} className="self-start bg-accent hover:bg-accent-hover text-white sm:self-auto"><Plus size={14} /> Nueva plantilla</Button>
         </div>
 
         {error && <div className="rounded-xl border border-red/30 bg-red/10 p-4 text-[13px] text-red">{error}</div>}

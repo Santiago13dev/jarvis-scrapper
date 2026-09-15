@@ -193,8 +193,7 @@ export default function LeadsPage() {
   }
 
   const displayLeads = useMemo(() => {
-    const base = (leads && leads.length > 0)
-      ? leads.map((l) => ({
+    const base = (leads ?? []).map((l) => ({
           id: l.id,
           name: l.name || "Sin nombre",
           category: l.category || "General",
@@ -206,8 +205,7 @@ export default function LeadsPage() {
           address: l.address || "—",
           date: new Date(l.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }),
           status: l.status || "new",
-        }))
-      : SAMPLE_LEADS;
+        }));
     let filtered = base;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -282,9 +280,9 @@ export default function LeadsPage() {
         </div>
 
         {/* Stat Cards */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {(() => {
-            const allLeads = leads || SAMPLE_LEADS;
+            const allLeads = leads ?? [];
             const withEmail = allLeads.filter((l) => l.email && l.email !== "—");
             const withPhone = allLeads.filter((l) => l.phone && l.phone !== "—");
             const withWeb = allLeads.filter((l) => l.website && l.website !== "—");
@@ -313,9 +311,9 @@ export default function LeadsPage() {
         </div>
 
         {/* Filter bar */}
-        <div className="rounded-xl border border-border/40 bg-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
+        <div className="rounded-lg border border-border/40 bg-card p-4">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <span className="h-2 w-2 rounded-full bg-accent" />
               <span className="text-[13px] font-medium text-ink">Google Maps — Restaurantes en Bogotá</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[9px] font-semibold text-teal uppercase tracking-wider">
@@ -354,11 +352,11 @@ export default function LeadsPage() {
         </div>
 
         {/* Main content: Table + Detail Panel */}
-        <div className="flex gap-4">
+        <div className="flex flex-col gap-4 xl:flex-row">
           {/* Table */}
-          <div className="flex-1 rounded-xl border border-border/40 bg-card overflow-hidden">
+          <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-border/40 bg-card">
             <div className="overflow-x-auto">
-            <table className="w-full text-left text-[12px]">
+            <table className="min-w-[1050px] w-full text-left text-[12px]">
               <thead>
                 <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-ink-dim">
                   <th className="px-4 py-3 font-medium w-8">
@@ -415,7 +413,7 @@ export default function LeadsPage() {
             </table>
             </div>
             {/* Pagination */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-t border-border/20 bg-card/50">
+            <div className="flex flex-col gap-2 border-t border-border/20 bg-card/50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
               <span className="text-[11px] text-ink-dim">Mostrando {((page - 1) * perPage) + 1} a {Math.min(page * perPage, displayLeads.length)} de {displayLeads.length} leads</span>
               <div className="flex items-center gap-1">
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
@@ -429,7 +427,7 @@ export default function LeadsPage() {
 
           {/* Detail Panel */}
           {selectedLead && (
-            <div className="w-[340px] shrink-0 rounded-xl border border-border/40 bg-card overflow-hidden">
+            <div className="w-full shrink-0 overflow-hidden rounded-lg border border-border/40 bg-card xl:w-[340px]">
               <div className="p-5">
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">

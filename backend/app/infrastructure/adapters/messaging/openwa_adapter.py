@@ -34,12 +34,12 @@ class OpenWAAdapter(MessagingProvider):
                 text = text.replace(f"{{{{{key}}}}}", value)
 
         response = await self._client.post(
-            "/send-text",
-            json={"chatId": f"{message.to_phone}@c.us", "content": text, "session": message.tenant_id},
+            "/send",
+            json={"phone": message.to_phone, "message": text},
         )
         response.raise_for_status()
         data: dict[str, Any] = response.json()
-        return data.get("id", "")
+        return data.get("messageId", "")
 
     async def register_webhook_handler(
         self, handler: Callable[[InboundMessage], Awaitable[None]]

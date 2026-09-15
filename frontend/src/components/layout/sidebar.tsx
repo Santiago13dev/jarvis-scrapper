@@ -10,15 +10,6 @@ import {
   FileText,
   Settings,
   Phone,
-  Radar,
-  Search,
-  Globe,
-  Send,
-  BarChart3,
-  History,
-  Download,
-  Plug,
-  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
@@ -57,9 +48,9 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-border/50 bg-sidebar">
+    <aside className="fixed inset-x-0 bottom-0 z-50 flex h-[68px] border-t border-border/60 bg-sidebar/95 px-1 pb-[max(env(safe-area-inset-bottom),0px)] backdrop-blur lg:sticky lg:top-0 lg:h-dvh lg:w-60 lg:shrink-0 lg:flex-col lg:border-r lg:border-t-0 lg:px-0 lg:pb-0">
       {/* Brand */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-border/30">
+      <div className="hidden items-center gap-3 border-b border-border/30 px-5 py-5 lg:flex">
         <Logo />
         <div>
           <span className="font-display text-[15px] font-bold tracking-tight text-ink block leading-tight">
@@ -72,13 +63,13 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-1 flex-col gap-5 px-3 py-5 overflow-y-auto">
+      <nav className="flex flex-1 items-center justify-around gap-1 overflow-x-auto lg:flex-col lg:items-stretch lg:justify-start lg:gap-5 lg:px-3 lg:py-5 lg:overflow-y-auto">
         {SECTIONS.map((section) => (
-          <div key={section.label}>
-            <p className="px-3 mb-2 text-[9px] font-semibold text-ink-dim uppercase tracking-[0.2em]">
+          <div key={section.label} className="contents lg:block">
+            <p className="mb-2 hidden px-3 text-[9px] font-semibold text-ink-dim uppercase tracking-[0.2em] lg:block">
               {section.label}
             </p>
-            <div className="flex flex-col gap-0.5">
+            <div className="contents lg:flex lg:flex-col lg:gap-0.5">
               {section.items.map((item) => {
                 const isActive = pathname?.startsWith(item.href);
                 const Icon = item.icon;
@@ -87,7 +78,7 @@ export function Sidebar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-200",
+                      "group flex min-w-[58px] flex-col items-center gap-1 rounded-md px-2 py-2 text-[9px] font-medium transition-colors lg:flex-row lg:gap-3 lg:rounded-lg lg:px-3 lg:text-[13px]",
                       isActive
                         ? "bg-accent/15 text-accent border border-accent/20"
                         : "text-ink-muted hover:bg-white/5 hover:text-ink border border-transparent"
@@ -101,7 +92,7 @@ export function Sidebar() {
                         isActive ? "text-accent" : "text-ink-dim group-hover:text-ink-muted"
                       )}
                     />
-                    {item.label}
+                    <span className="max-w-[64px] truncate lg:max-w-none">{item.label}</span>
                   </Link>
                 );
               })}
@@ -111,7 +102,7 @@ export function Sidebar() {
       </nav>
 
       {/* Usage bar */}
-      <div className="border-t border-border/30 px-5 py-4 space-y-3">
+      <div className="hidden border-t border-border/30 px-5 py-4 space-y-3 lg:block">
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[10px] text-ink-dim uppercase tracking-wider">Uso actual</span>

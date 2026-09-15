@@ -34,9 +34,11 @@ class GoogleMapsScraperAdapter(ScraperProvider):
 
         payload = {
             "Name": f"jarvisia-{query.keyword}",
-            "Keywords": [keyword],
+            "keywords": [keyword],
             "lang": query.language or "es",
             "zoom": 15,
+            "lat": str(settings.scraper_latitude),
+            "lon": str(settings.scraper_longitude),
             "fast_mode": False,
             "radius": 10000,
             "depth": query.depth,

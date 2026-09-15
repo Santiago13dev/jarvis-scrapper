@@ -30,13 +30,13 @@ export default function WhatsAppPage() {
           <p className="text-[12px] text-ink-muted mt-0.5">Escaneá el código QR para conectar tu cuenta</p>
         </div>
 
-        <div className="flex gap-6">
-          <div className="flex-1">
-            <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
-              <iframe src={OPENWA_URL} className="h-[600px] w-full border-0" title="WhatsApp QR" />
+        <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
+          <div className="min-w-0 flex-1">
+            <div className="overflow-hidden rounded-lg border border-border/40 bg-card">
+              <iframe src={OPENWA_URL} className="h-[460px] w-full border-0 sm:h-[600px]" title="WhatsApp QR" />
             </div>
           </div>
-          <div className="w-72 shrink-0 space-y-4">
+          <div className="grid shrink-0 gap-4 sm:grid-cols-2 lg:block lg:w-72 lg:space-y-4">
             <div className="rounded-xl border border-border/40 bg-card p-5">
               <h3 className="text-[13px] font-medium text-ink">Estado de conexión</h3>
               <div className="mt-3 flex items-center gap-2">

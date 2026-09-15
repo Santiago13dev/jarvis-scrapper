@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     scraper_results_path: str = "./integrations/google-maps-scraper/results"
     scraper_api_url: str = "http://google-maps-scraper:8080"
+    scraper_latitude: float = 4.6534
+    scraper_longitude: float = -74.0836
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

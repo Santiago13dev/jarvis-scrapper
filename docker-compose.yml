@@ -45,7 +45,8 @@ services:
       - ./backend:/app
       - /var/run/docker.sock:/var/run/docker.sock
       - .:/project
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command:
+      ["/bin/sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
   frontend:
     build:
@@ -66,9 +67,7 @@ services:
   # Integración externa: gosom/google-maps-scraper en modo web (API HTTP + SQLite).
   # Se levanta como servicio permanente; el backend lo consume vía HTTP.
   google-maps-scraper:
-    build:
-      context: ./integrations/google-maps-scraper
-      dockerfile: Dockerfile
+    image: gosom/google-maps-scraper:latest
     container_name: prospectai_scraper
     restart: unless-stopped
     command: ["-web", "-addr", ":8080", "-data-folder", "/app/data"]
