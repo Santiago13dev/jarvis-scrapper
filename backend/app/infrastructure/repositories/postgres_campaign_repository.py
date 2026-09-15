@@ -53,7 +53,12 @@ class PostgresCampaignRepository(CampaignRepository):
         return CampaignMapper.to_entity(model)
 
     async def update(self, workspace_id: str, campaign: Campaign) -> Campaign:
-        model = await self._session.get(CampaignModel, campaign.id)
+        result = await self._session.execute(
+            select(CampaignModel)
+            .where(CampaignModel.workspace_id == workspace_id, CampaignModel.id == campaign.id)
+            .options(selectinload(CampaignModel.leads))
+        )
+        model = result.scalar_one_or_none()
         if model is None or model.workspace_id != workspace_id:
             raise ValueError(f"Campaign {campaign.id} no encontrada en workspace {workspace_id}")
         model.name = campaign.name

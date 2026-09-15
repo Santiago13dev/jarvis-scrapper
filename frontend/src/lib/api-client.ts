@@ -37,6 +37,11 @@ export async function apiFetch<T>(
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.localStorage.removeItem("jarvisia_access_token");
+      window.localStorage.removeItem("jarvisia_refresh_token");
+      throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
+    }
     throw new ApiError(response.status, body.detail ?? response.statusText);
   }
 
