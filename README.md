@@ -1,104 +1,83 @@
-# ProspectAI
+# JarvisIA
 
-ProspectAI es una plataforma SaaS multi-tenant diseñada para automatizar la prospección comercial de negocios locales mediante scraping, análisis con IA, CRM y campañas de outreach.
+JarvisIA es una consola de prospección comercial para agencias y equipos de ventas. Centraliza la búsqueda de negocios locales, la gestión de leads y la preparación de campañas de contacto desde un solo workspace.
 
-La idea central es convertir información dispersa de negocios en leads calificados, listos para ser gestionados desde un dashboard único y procesados con flujos automatizados.
+## Cómo funciona
 
-## ✨ Qué ofrece
+1. Busca un rubro y una ubicación desde **Leads**.
+2. JarvisIA consulta Google Maps y guarda los negocios encontrados en tu workspace.
+3. Filtra por información útil, por ejemplo: negocios sin página web, con teléfono o con correo electrónico.
+4. Revisa los leads y crea una plantilla de mensaje profesional.
+5. Agrupa leads seleccionados en una campaña y controla su estado desde **Campañas**.
+6. Conecta un número de WhatsApp mediante QR para realizar pruebas controladas de envío.
 
-- Descubrimiento de negocios desde fuentes externas de scraping.
-- Clasificación y scoring de leads con IA.
-- Gestión centralizada de leads, campañas y conversaciones.
-- Integración con WhatsApp para automatizar mensajes y seguimiento.
-- Arquitectura preparada para escalar con módulos independientes.
+El dashboard muestra métricas reales del workspace: leads disponibles, campañas activas, conversaciones y mensajes enviados.
 
-## 🏗️ Arquitectura
+## Características
 
-El proyecto está estructurado con una arquitectura hexagonal (Ports & Adapters) y capas bien definidas:
+- Extracción de negocios locales desde Google Maps.
+- CRM multi-workspace para leads, estados, filtros y exportación.
+- Plantillas de mensajes y campañas de outreach.
+- Dashboard con información operativa real.
+- Integración opcional con OpenAI para análisis de leads.
+- Interfaz responsive para computador y celular.
 
-- Backend: FastAPI + Python
-- Frontend: Next.js + React + TypeScript
-- Base de datos: PostgreSQL
-- Cache/colas: Redis + ARQ
-- Integraciones externas: Google Maps Scraper, OpenAI y WhatsApp
+## Tecnologías
 
-Para más detalle técnico, consulta [ARCHITECTURE.md](ARCHITECTURE.md).
+- Frontend: Next.js, React, TypeScript y Tailwind CSS.
+- Backend: FastAPI, SQLAlchemy, Alembic y Pydantic.
+- Infraestructura: Docker Compose, PostgreSQL, Redis y ARQ.
+- Integraciones: Google Maps Scraper, OpenAI y WhatsApp Web mediante OpenWA.
 
-## 🧰 Stack tecnológico
-
-- Frontend: Next.js, React, TypeScript, Tailwind CSS
-- Backend: FastAPI, SQLAlchemy, Alembic, Pydantic
-- Infraestructura: Docker, Docker Compose
-- Integraciones: OpenAI, Redis, Google Maps Scraper, WhatsApp
-
-## 🚀 Inicio rápido
+## Inicio local
 
 ### Requisitos
 
-- Docker
-- Docker Compose
-- Git
+- Docker Desktop con el motor iniciado.
+- Git.
 
-### 1. Clonar el repositorio
+### Ejecutar
 
 ```bash
 git clone https://github.com/Santiago13dev/jarvis-scrapper.git
 cd jarvis-scrapper
-```
-
-### 2. Configurar variables de entorno
-
-Copia el archivo de ejemplo y ajusta los valores según tu entorno:
-
-```bash
 cp .env.example .env
+docker compose up --build -d
 ```
 
-### 3. Levantar los servicios
+Docker ejecuta migraciones automáticamente al iniciar el backend. Comprueba la API con:
 
 ```bash
-docker compose up --build
+curl http://localhost:8000/health
 ```
 
-Esto levantará:
+### Accesos locales
 
-- Backend en http://localhost:8000
-- Frontend en http://localhost:3000
-- PostgreSQL en localhost:5432
-- Redis en localhost:6379
+| Servicio | Dirección |
+| --- | --- |
+| Aplicación | http://localhost:3000 |
+| API | http://localhost:8000/api/v1 |
+| Documentación API | http://localhost:8000/api/docs |
+| Scraper Google Maps | http://localhost:8080 |
+| Conexión WhatsApp QR | http://localhost:8090 |
 
-La API documentada estará disponible en:
+## Configuración
 
-- http://localhost:8000/docs
+El archivo `.env.example` contiene todas las variables necesarias. Para uso local, define como mínimo una contraseña de PostgreSQL y un `JWT_SECRET_KEY` propio. Configura `OPENAI_API_KEY` sólo si utilizarás análisis asistido por IA.
 
-## 📁 Estructura del proyecto
+Las coordenadas del scraper se controlan con `SCRAPER_LATITUDE` y `SCRAPER_LONGITUDE`. Ajusta esos valores al área desde la que deseas iniciar las búsquedas.
 
-```text
-ProspectAI/
-├── backend/            # API FastAPI y lógica de negocio
-├── frontend/           # Aplicación Next.js
-├── integrations/       # Integraciones externas como el scraper de Google Maps
-├── docker-compose.yml  # Orquestación de servicios
-├── ARCHITECTURE.md     # Documentación técnica de arquitectura
-└── .env.example        # Variables de entorno base
-```
+## Uso responsable
 
-## 🔧 Estado del proyecto
+Google Maps y WhatsApp son servicios de terceros sujetos a sus propios términos y a la normativa aplicable. Utiliza datos de negocios y mensajería comercial de forma responsable:
 
-Este repositorio se encuentra en una etapa inicial de desarrollo, con la estructura base y los contratos de arquitectura implementados. El objetivo actual es consolidar los módulos core y dejarlo listo para pruebas y desarrollo incremental.
+- Revisa y filtra los leads antes de contactarles.
+- Realiza primero pruebas con tu propio número o contactos que hayan dado consentimiento.
+- Evita automatizaciones o envíos masivos desde WhatsApp Web.
+- Para una operación comercial escalable, usa la WhatsApp Business Platform / Cloud API oficial de Meta y gestiona el consentimiento de los destinatarios.
 
-## 🗺️ Próximos pasos
+## Producción
 
-- Implementar modelos de datos y migraciones.
-- Conectar los adapters reales de scraping, IA y WhatsApp.
-- Completar los casos de uso de negocio.
-- Desarrollar los flujos del dashboard y CRM.
-- Preparar pruebas end-to-end y despliegue.
+La composición actual está optimizada para desarrollo local. Antes de publicarla, configura un VPS, dominio, HTTPS, secretos robustos, copias de seguridad de PostgreSQL y una composición de Docker sin montajes de código ni modo de recarga.
 
-## 🤝 Contribución
-
-Las contribuciones son bienvenidas. Si deseas colaborar:
-
-1. Haz un fork del proyecto.
-2. Crea una rama con tu cambio.
-3. Abre un pull request describiendo claramente la mejora.
+Consulta [ARCHITECTURE.md](ARCHITECTURE.md) para el detalle técnico de la arquitectura.
