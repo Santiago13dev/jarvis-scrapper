@@ -23,24 +23,17 @@ const FEATURES = [
   {
     icon: Megaphone,
     title: "Campañas Automatizadas",
-    desc: "Secuencias personalizadas de WhatsApp que se ejecutan solas, 24/7.",
+    desc: "Organiza tus contactos y prepara campañas de WhatsApp con control humano.",
     iconBg: "bg-blue/15",
     iconColor: "text-blue",
   },
   {
     icon: Phone,
     title: "WhatsApp Integrado",
-    desc: "Conexión directa con tu número de WhatsApp. Sin APIs externas.",
+    desc: "Conecta tu número de WhatsApp para revisar conversaciones desde un solo lugar.",
     iconBg: "bg-amber/15",
     iconColor: "text-amber",
   },
-];
-
-const STATS = [
-  { value: "12,540+", label: "Negocios extraídos" },
-  { value: "85%", label: "Tasa de entrega" },
-  { value: "3.2x", label: "Más respuestas" },
-  { value: "24/7", label: "Operación continua" },
 ];
 
 export default function LandingPage() {
@@ -107,14 +100,6 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 rounded-2xl border border-border/40 bg-card/50 backdrop-blur-sm p-6">
-            {STATS.map((stat) => (
-              <div key={stat.label}>
-                <p className="text-2xl font-display font-bold text-ink">{stat.value}</p>
-                <p className="text-[11px] text-ink-muted mt-1">{stat.label}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 

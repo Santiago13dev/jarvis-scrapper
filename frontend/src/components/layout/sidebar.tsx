@@ -101,23 +101,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Usage bar */}
-      <div className="hidden border-t border-border/30 px-5 py-4 space-y-3 lg:block">
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[10px] text-ink-dim uppercase tracking-wider">Uso actual</span>
-            <span className="text-[10px] text-accent font-medium">78%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-border/30 overflow-hidden">
-            <div className="h-full rounded-full bg-accent" style={{ width: "78%" }} />
-          </div>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-ink-dim">Leads este mes: <span className="text-ink font-mono">12,540</span> / 16,000</span>
-        </div>
-        <button className="w-full rounded-lg bg-accent/15 border border-accent/25 py-2 text-[12px] font-medium text-accent hover:bg-accent/25 transition-colors">
-          Mejorar plan
-        </button>
+      <div className="hidden border-t border-border/30 px-5 py-4 lg:block">
+        <p className="text-[11px] leading-relaxed text-ink-dim">Trabaja con los datos reales de tu workspace. Las acciones importantes aparecen en cada pantalla.</p>
       </div>
     </aside>
   );

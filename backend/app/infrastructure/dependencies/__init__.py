@@ -15,6 +15,7 @@ from .providers import (
     get_statistics_repository,
     get_template_repository,
     get_user_repository,
+    get_website_audit_service,
 )
 from .auth import CurrentUser, get_current_user, require_workspace_access
 
@@ -35,6 +36,7 @@ __all__ = [
     "get_statistics_repository",
     "get_template_repository",
     "get_user_repository",
+    "get_website_audit_service",
     "CurrentUser",
     "get_current_user",
     "require_workspace_access",

@@ -34,18 +34,6 @@ function JarvisIcon({ className }: { className?: string }) {
   );
 }
 
-function FloatingCard({ title, count, className, delay }: { title: string; count: string; className: string; delay: string }) {
-  return (
-    <div
-      className={`absolute rounded-xl border border-accent/20 bg-card/80 backdrop-blur-sm px-3 py-2 shadow-lg animate-pulse ${className}`}
-      style={{ animationDelay: delay }}
-    >
-      <p className="text-[11px] font-medium text-ink">{title}</p>
-      <p className="text-[10px] text-accent">{count}</p>
-    </div>
-  );
-}
-
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -88,11 +76,6 @@ export default function LoginPage() {
 
       {/* Left side - Marketing content */}
       <div className="hidden lg:flex flex-1 relative z-10 items-center px-14 xl:px-20 2xl:px-24">
-        {/* Floating cards scattered over the robot illustration */}
-        <FloatingCard title="Restaurantes" count="1,250 leads" className="top-[18%] right-[10%]" delay="0s" />
-        <FloatingCard title="Dentistas" count="990 leads" className="top-[44%] right-[8%]" delay="1s" />
-        <FloatingCard title="Gimnasios" count="750 leads" className="top-[68%] right-[16%]" delay="2s" />
-
         <div className="relative z-10 max-w-xl">
           {/* Logo */}
           <div className="flex items-center gap-2.5 mb-8">

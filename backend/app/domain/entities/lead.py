@@ -43,6 +43,8 @@ class Lead:
     workspace_id: str
     name: str
     raw_source_id: str | None  # place_id u otro id de origen, para deduplicación
+    external_id: str | None = None
+    do_not_contact: bool = False
     address: str | None = None
     phone: str | None = None
     website: str | None = None
@@ -56,8 +58,16 @@ class Lead:
     photos_count: int | None = None
     latitude: float | None = None
     longitude: float | None = None
+    normalized_phone: str | None = None
+    root_domain: str | None = None
+    normalized_name_address: str | None = None
+    dedupe_fingerprint: str | None = None
 
     score: LeadScore | None = None
+    score_level: str | None = None
+    score_reasons: list[dict[str, object]] = field(default_factory=list)
+    score_niche: str | None = None
+    score_calculated_at: datetime | None = None
     status: LeadStatus = LeadStatus.NEW
     owner_user_id: str | None = None  # responsable
     tags: list[str] = field(default_factory=list)
@@ -70,6 +80,17 @@ class Lead:
 
     def apply_ai_score(self, score: LeadScore) -> None:
         self.score = score
+        self.updated_at = datetime.now(timezone.utc)
+
+    def apply_deterministic_score(self, result: object) -> None:
+        self.score = LeadScore(
+            value=result.score,
+            summary="; ".join(reason.description for reason in result.reasons if reason.points > 0),
+        )
+        self.score_level = result.level
+        self.score_reasons = [reason.model_dump() for reason in result.reasons]
+        self.score_niche = result.niche
+        self.score_calculated_at = result.calculated_at
         self.updated_at = datetime.now(timezone.utc)
 
     def assign_to(self, user_id: str) -> None:

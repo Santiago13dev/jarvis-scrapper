@@ -3,14 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Globe, Megaphone, Phone, RefreshCw, Search, Sparkles, Trash2, ChevronDown,
-  Star, Download, Mail, MapPin, Edit3, ExternalLink, X, Filter,
+  Star, Download, Mail, MapPin, ExternalLink, X, CalendarClock, Check, Ban,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
-import type { Lead, LeadStatus, MessageTemplate, Campaign } from "@/types/api";
+import type { Lead, LeadStatus, MessageTemplate, Campaign, FollowUp } from "@/types/api";
 import dynamic from "next/dynamic";
 import * as XLSX from "xlsx";
 
@@ -27,19 +27,6 @@ const LEAD_STATUSES: { value: LeadStatus; label: string }[] = [
   { value: "demo_sent", label: "Demo enviado" },
   { value: "won", label: "Ganado" },
   { value: "lost", label: "Perdido" },
-];
-
-const SAMPLE_LEADS = [
-  { id: "1", name: "La Carreta", category: "Restaurante Cubano", phone: "+57 310-456-7890", email: "info@lacarretabogota.com", website: "lacarretabogota.com", rating: 4.6, reviews: 230, address: "Cra 13 #85-32, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "new" as LeadStatus },
-  { id: "2", name: "Sushi Maki", category: "Restaurante Japonés", phone: "+57 315-123-4567", email: "hello@sushimaki.co", website: "sushimaki.co", rating: 4.7, reviews: 185, address: "Cra 11 #93-78, Zona T, Bogotá", date: "15 May 2024 14:30", status: "new" as LeadStatus },
-  { id: "3", name: "Miami Grill", category: "Restaurante Americano", phone: "+57 300-654-3210", email: "contact@miamigrill.com", website: "miamigrill.com", rating: 4.7, reviews: 142, address: "Cra 7 #72-41, Zona G, Bogotá", date: "15 May 2024 14:30", status: "contacted" as LeadStatus },
-  { id: "4", name: "Green Vita", category: "Restaurante Saludable", phone: "+57 321-987-6543", email: "info@greenvita.co", website: "greenvita.co", rating: 4.8, reviews: 310, address: "Cra 6 #67-23, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "qualified" as LeadStatus },
-  { id: "5", name: "Pizza Palace", category: "Pizzería", phone: "+57 318-876-5432", email: "order@pizzapalace.co", website: "pizzapalace.co", rating: 4.3, reviews: 98, address: "Cra 15 #80-20, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "new" as LeadStatus },
-  { id: "6", name: "Burger House", category: "Hamburguesería", phone: "+57 301-321-9876", email: "info@burgerhouse.co", website: "burgerhouse.co", rating: 4.4, reviews: 205, address: "Cra 9 #75-70, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "new" as LeadStatus },
-  { id: "7", name: "Café Downtown", category: "Cafetería", phone: "+57 300-555-0123", email: "hello@cafedowntown.co", website: "cafedowntown.co", rating: 4.5, reviews: 175, address: "Cra 2 #11-41, La Candelaria, Bogotá", date: "15 May 2024 14:30", status: "contacted" as LeadStatus },
-  { id: "8", name: "Taco City", category: "Restaurante Mexicano", phone: "+57 312-000-1111", email: "info@tacocity.co", website: "tacocity.co", rating: 4.2, reviews: 120, address: "Cra 14 #82-10, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "new" as LeadStatus },
-  { id: "9", name: "Poke Fresh", category: "Restaurante Saludable", phone: "+57 300-456-3333", email: "info@pokefresh.co", website: "pokefresh.co", rating: 4.7, reviews: 190, address: "Cra 11 #85-32, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "qualified" as LeadStatus },
-  { id: "10", name: "Sweet Bakery", category: "Panadería", phone: "+57 310-789-1122", email: "contact@sweetbakery.co", website: "sweetbakery.co", rating: 4.9, reviews: 340, address: "Cra 5 #60-15, Chapinero, Bogotá", date: "15 May 2024 14:30", status: "new" as LeadStatus },
 ];
 
 function StarRating({ rating, size = 14 }: { rating: number | null; size?: number }) {
@@ -62,7 +49,7 @@ export default function LeadsPage() {
   const [form, setForm] = useState({ keyword: "restaurantes", location: "Bogotá, Colombia", depth: 2 });
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [selectedLead, setSelectedLead] = useState<{id: string; name: string; category: string; phone: string; email: string; website: string; rating: number; reviews: number; address: string; date: string; status: string} | null>(null);
+  const [selectedLead, setSelectedLead] = useState<{id: string; name: string; category: string; phone: string; email: string; website: string; rating: number | null; reviews: number | null; address: string; date: string; status: string} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -75,6 +62,7 @@ export default function LeadsPage() {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [creatingCampaign, setCreatingCampaign] = useState(false);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const perPage = 10;
 
   async function loadLeads(wsId: string) {
@@ -83,6 +71,28 @@ export default function LeadsPage() {
   }
 
   useEffect(() => { if (workspaceId) loadLeads(workspaceId); }, [workspaceId]);
+
+  async function loadFollowUps(wsId: string) {
+    try {
+      const result = await api.get<FollowUp[]>(`/workspaces/${wsId}/follow-ups`);
+      setFollowUps(result.sort((a, b) => new Date(a.next_follow_up_at).getTime() - new Date(b.next_follow_up_at).getTime()));
+    } catch (err) { setError(err instanceof Error ? err.message : "Error al cargar seguimientos"); }
+  }
+
+  useEffect(() => { if (workspaceId) loadFollowUps(workspaceId); }, [workspaceId]);
+
+  async function updateFollowUp(path: string, body?: unknown) {
+    if (!workspaceId) return;
+    try {
+      await api.patch(`/workspaces/${workspaceId}/follow-ups/${path}`, body);
+      await loadFollowUps(workspaceId);
+    } catch (err) { setError(err instanceof Error ? err.message : "Error al actualizar seguimiento"); }
+  }
+
+  async function rescheduleFollowUp(followUp: FollowUp) {
+    const nextDate = window.prompt("Nueva fecha y hora (ISO)", new Date(followUp.next_follow_up_at).toISOString());
+    if (nextDate) await updateFollowUp(`${followUp.id}/reschedule`, { next_follow_up_at: nextDate });
+  }
 
   async function handleImport() {
     if (!workspaceId) return; setImporting(true); setImportModalOpen(false); setError(null); setSuccessMsg(null);
@@ -265,9 +275,6 @@ export default function LeadsPage() {
                 className="bg-transparent text-[12px] text-ink placeholder:text-ink-dim outline-none w-56" />
               <span className="text-[10px] text-ink-dim border border-border/30 rounded px-1.5 py-0.5">⌘ K</span>
             </div>
-            <button className="rounded-lg border border-border/50 bg-input p-2 text-ink-muted hover:text-ink transition-colors relative">
-              <Filter size={16} />
-            </button>
             <button onClick={() => { if (!isAuthenticated) { setError("Iniciá sesión para importar leads desde Google Maps"); return; } setImportModalOpen(true); }} disabled={importing}
               className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-50">
               {importing ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
@@ -287,11 +294,11 @@ export default function LeadsPage() {
             const withPhone = allLeads.filter((l) => l.phone && l.phone !== "—");
             const withWeb = allLeads.filter((l) => l.website && l.website !== "—");
             const stats = [
-              { label: "Leads extraídos", value: allLeads.length.toLocaleString(), icon: Users, color: "bg-accent/15 text-accent", trend: "+18.5%" },
-              { label: "Correos encontrados", value: withEmail.length.toLocaleString(), icon: Mail, color: "bg-blue/15 text-blue", trend: "+14.2%" },
-              { label: "Teléfonos encontrados", value: withPhone.length.toLocaleString(), icon: Phone, color: "bg-teal/15 text-teal", trend: "+16.8%" },
-              { label: "Sitios web encontrados", value: withWeb.length.toLocaleString(), icon: Globe, color: "bg-amber/15 text-amber", trend: "+12.6%" },
-              { label: "Direcciones encontrados", value: allLeads.filter((l) => l.address && l.address !== "—").length.toLocaleString(), icon: MapPin, color: "bg-pink/15 text-pink", trend: "+18.5%" },
+              { label: "Contactos", value: allLeads.length.toLocaleString(), icon: Users, color: "bg-accent/15 text-accent" },
+              { label: "Con correo", value: withEmail.length.toLocaleString(), icon: Mail, color: "bg-blue/15 text-blue" },
+              { label: "Con teléfono", value: withPhone.length.toLocaleString(), icon: Phone, color: "bg-teal/15 text-teal" },
+              { label: "Con sitio web", value: withWeb.length.toLocaleString(), icon: Globe, color: "bg-amber/15 text-amber" },
+              { label: "Con dirección", value: allLeads.filter((l) => l.address && l.address !== "—").length.toLocaleString(), icon: MapPin, color: "bg-pink/15 text-pink" },
             ];
             return stats.map((stat) => {
               const Icon = stat.icon;
@@ -299,7 +306,7 @@ export default function LeadsPage() {
                 <div key={stat.label} className="rounded-xl border border-border/40 bg-card p-4 transition-all hover:border-accent/20">
                   <div className="flex items-start justify-between">
                     <div className={`rounded-lg p-2 ${stat.color}`}><Icon size={15} /></div>
-                    <span className="text-[10px] text-teal font-medium">{stat.trend}</span>
+                    <span className="text-[10px] text-ink-dim">En tu base</span>
                   </div>
                   <p className="text-lg font-bold text-ink font-mono-data mt-2">{stat.value}</p>
                   <p className="text-[10px] text-ink-dim mt-0.5">{stat.label}</p>
@@ -315,14 +322,14 @@ export default function LeadsPage() {
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <span className="h-2 w-2 rounded-full bg-accent" />
-              <span className="text-[13px] font-medium text-ink">Google Maps — Restaurantes en Bogotá</span>
+              <span className="text-[13px] font-medium text-ink">Base de contactos</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[9px] font-semibold text-teal uppercase tracking-wider">
-                <span className="h-1 w-1 rounded-full bg-teal" /> Completado
+                <span className="h-1 w-1 rounded-full bg-teal" /> Datos del workspace
               </span>
-              <span className="text-[12px] text-ink-muted">{(leads?.length || SAMPLE_LEADS.length).toLocaleString()} leads</span>
+              <span className="text-[12px] text-ink-muted">{(leads?.length || 0).toLocaleString()} contactos</span>
             </div>
             <div className="flex items-center gap-2">
-              <button className="rounded-lg border border-border/50 bg-input p-2 text-ink-muted hover:text-ink transition-colors"><RefreshCw size={14} /></button>
+              <button onClick={() => workspaceId && Promise.all([loadLeads(workspaceId), loadFollowUps(workspaceId)])} title="Actualizar datos" className="rounded-lg border border-border/50 bg-input p-2 text-ink-muted hover:text-ink transition-colors"><RefreshCw size={14} /></button>
               <button onClick={handleExport} className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors">
                 <Download size={13} /> Exportar
               </button>
@@ -350,6 +357,42 @@ export default function LeadsPage() {
             )}
           </div>
         </div>
+
+        <section className="rounded-lg border border-border/40 bg-card p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CalendarClock size={15} className="text-accent" />
+              <h2 className="text-[13px] font-semibold text-ink">Seguimientos pendientes</h2>
+              <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] text-accent">{followUps.length}</span>
+            </div>
+            <span className="text-[10px] text-ink-dim">Ordenados por próxima fecha</span>
+          </div>
+          {followUps.length === 0 ? (
+            <p className="py-3 text-[11px] text-ink-dim">No hay seguimientos pendientes.</p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {followUps.map((followUp) => {
+                const lead = leads?.find((item) => item.id === followUp.lead_id);
+                return (
+                  <div key={followUp.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/30 bg-input px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-medium text-ink">{lead?.name ?? followUp.lead_id}</p>
+                      <p className={`text-[10px] ${followUp.status === "due" ? "text-amber" : "text-ink-muted"}`}>
+                        {followUp.status === "due" ? "Vencido · " : "Programado · "}
+                        {new Date(followUp.next_follow_up_at).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button title="Completar" onClick={() => updateFollowUp(`${followUp.id}/complete`)} className="rounded-md p-1.5 text-teal hover:bg-teal/10"><Check size={14} /></button>
+                      <button title="Reprogramar" onClick={() => rescheduleFollowUp(followUp)} className="rounded-md p-1.5 text-accent hover:bg-accent/10"><CalendarClock size={14} /></button>
+                      <button title="Cancelar" onClick={() => updateFollowUp(`${followUp.id}/cancel`, { reason: "cancelled_by_user" })} className="rounded-md p-1.5 text-red hover:bg-red/10"><Ban size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
         {/* Main content: Table + Detail Panel */}
         <div className="flex flex-col gap-4 xl:flex-row">
@@ -441,8 +484,7 @@ export default function LeadsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <button className="rounded-md p-1.5 text-ink-dim hover:text-ink hover:bg-white/5 transition-colors"><Edit3 size={13} /></button>
-                    <button className="rounded-md p-1.5 text-ink-dim hover:text-ink hover:bg-white/5 transition-colors"><ExternalLink size={13} /></button>
+                    {selectedLead.website !== "—" && <button onClick={() => window.open(selectedLead.website.startsWith("http") ? selectedLead.website : `https://${selectedLead.website}`, "_blank", "noopener,noreferrer")} title="Abrir sitio web" className="rounded-md p-1.5 text-ink-dim hover:text-ink hover:bg-white/5 transition-colors"><ExternalLink size={13} /></button>}
                     <button onClick={() => setSelectedLead(null)} className="rounded-md p-1.5 text-ink-dim hover:text-ink hover:bg-white/5 transition-colors"><X size={13} /></button>
                   </div>
                 </div>
@@ -498,136 +540,26 @@ export default function LeadsPage() {
                 {/* Campaign tags */}
                 <div className="mb-4">
                   <p className="text-[10px] text-ink-dim uppercase tracking-wider mb-2">Etiquetas</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {["Restaurante", "Cubano", "Chapinero"].map((tag) => (
-                      <span key={tag} className="inline-flex items-center rounded-full bg-accent/10 border border-accent/20 px-2 py-0.5 text-[10px] font-medium text-accent">{tag}</span>
-                    ))}
-                    <button className="inline-flex items-center rounded-full border border-border/40 px-2 py-0.5 text-[10px] text-ink-dim hover:text-ink hover:border-border transition-colors">+</button>
-                  </div>
+                  <p className="text-[12px] text-ink-dim">No hay etiquetas guardadas para este contacto.</p>
                 </div>
 
                 {/* Notes */}
                 <div className="mb-4">
                   <p className="text-[10px] text-ink-dim uppercase tracking-wider mb-1.5">Notas</p>
-                  <p className="text-[12px] text-ink-muted leading-relaxed">Restaurante cubano tradicional con excelente reputación.</p>
-                  <button className="text-[11px] text-accent hover:text-accent-hover mt-1 flex items-center gap-1"><Edit3 size={10} /> Editar notas</button>
+                  <p className="text-[12px] text-ink-dim">No hay notas guardadas para este contacto.</p>
                 </div>
 
                 {/* Actions */}
                 <div className="flex items-center gap-2">
                   <Button onClick={() => { loadCampaignsAndTemplates(); setCampaignModalOpen(true); }} className="flex-1 bg-accent hover:bg-accent-hover text-white text-[12px]"><Megaphone size={13} /> Agregar a campaña</Button>
-                  <Button variant="secondary" className="text-[12px]">Acciones</Button>
                 </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* Bottom section: Charts + Activity */}
-        <div className="grid grid-cols-3 gap-4">
-          {/* Fuentes principales */}
-          <div className="rounded-xl border border-border/40 bg-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-[13px] font-bold text-ink">Fuentes principales</h3>
-              <span className="text-[10px] text-ink-dim">Últimos 30 días</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="relative w-[100px] h-[100px] shrink-0">
-                <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgb(var(--border)/0.3)" strokeWidth="3" />
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="#825aff" strokeWidth="3" strokeDasharray="68 32" strokeDashoffset="0" />
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="#00d296" strokeWidth="3" strokeDasharray="22 78" strokeDashoffset="-68" />
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="#468cff" strokeWidth="3" strokeDasharray="7 93" strokeDashoffset="-90" />
-                  <circle cx="18" cy="18" r="15.9" fill="none" stroke="#ff8050" strokeWidth="3" strokeDasharray="3 97" strokeDashoffset="-97" />
-                </svg>
-              </div>
-              <div className="space-y-2 flex-1">
-                {[
-                  { name: "Google Maps", pct: "68%", count: "8,512", color: "#825aff" },
-                  { name: "Scraper Web", pct: "22%", count: "2,765", color: "#00d296" },
-                  { name: "Importación", pct: "7%", count: "854", color: "#468cff" },
-                  { name: "Dominios & Emails", pct: "3%", count: "409", color: "#ff8050" },
-                ].map((s) => (
-                  <div key={s.name} className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-sm" style={{ backgroundColor: s.color }} />
-                      <span className="text-[11px] text-ink-muted">{s.name}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-ink font-medium">{s.pct}</span>
-                      <span className="text-[10px] text-ink-dim">({s.count})</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Leads por categoría */}
-          <div className="rounded-xl border border-border/40 bg-card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-[13px] font-bold text-ink">Leads por categoría</h3>
-              <span className="text-[10px] text-ink-dim">Últimos 30 días</span>
-            </div>
-            <div className="space-y-3">
-              {[
-                { name: "Restaurantes", pct: "35%", count: "4,388", width: "35%" },
-                { name: "Salud & Belleza", pct: "20%", count: "2,765", width: "20%" },
-                { name: "Retail", pct: "15%", count: "1,881", width: "15%" },
-                { name: "Servicios", pct: "10%", count: "1,254", width: "10%" },
-                { name: "Otros", pct: "20%", count: "2,508", width: "20%" },
-              ].map((c) => (
-                <div key={c.name}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] text-ink-muted">{c.name}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-ink font-medium">{c.pct}</span>
-                      <span className="text-[10px] text-ink-dim">({c.count})</span>
-                    </div>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-border/20 overflow-hidden">
-                    <div className="h-full rounded-full bg-accent" style={{ width: c.width }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Calificación promedio + Activity */}
-          <div className="space-y-4">
-            <div className="rounded-xl border border-border/40 bg-card p-5 text-center">
-              <h3 className="font-display text-[13px] font-bold text-ink mb-3">Calificación promedio</h3>
-              <p className="text-[10px] text-ink-dim mb-2">Últimos 30 días</p>
-              <div className="flex items-center justify-center gap-2">
-                <span className="text-4xl font-display font-bold text-ink">4.6</span>
-                <span className="text-lg text-ink-dim">/ 5</span>
-              </div>
-              <StarRating rating={4.6} size={16} />
-              <p className="text-[10px] text-ink-dim mt-2">Basado en 12,540 negocios</p>
-            </div>
-
-            <div className="rounded-xl border border-border/40 bg-card p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-display text-[13px] font-bold text-ink">Actividad reciente</h3>
-                <button className="text-[11px] text-accent hover:text-accent-hover">Ver todo</button>
-              </div>
-              <div className="space-y-3">
-                {[
-                  { action: "Google Maps — Restaurantes Bogotá", detail: "Completado · 1,250 leads", time: "15 May 2024 14:30", color: "bg-teal" },
-                  { action: "Google Maps — Dentistas Bogotá", detail: "Completado · 950 leads", time: "14 May 2024 10:15", color: "bg-accent" },
-                ].map((a, i) => (
-                  <div key={i} className="flex items-start gap-2.5">
-                    <div className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${a.color}`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[11px] text-ink font-medium truncate">{a.action}</p>
-                      <p className="text-[10px] text-ink-dim">{a.detail}</p>
-                    </div>
-                    <span className="text-[9px] text-ink-dim shrink-0">{a.time}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+        <div className="rounded-lg border border-border/40 bg-card p-4 text-[12px] text-ink-muted">
+          Las métricas y contactos de esta pantalla corresponden únicamente al workspace activo.
         </div>
       </div>
 

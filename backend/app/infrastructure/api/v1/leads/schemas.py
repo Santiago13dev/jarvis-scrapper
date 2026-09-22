@@ -4,7 +4,15 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.application.dto.lead_scoring_dto import (
+    BulkRecalculateLeadScoreRequest,
+    BulkRecalculateLeadScoreResponse,
+    LeadScoringReason,
+    LeadScoringResult,
+    RecalculateLeadScoreRequest,
+)
 from app.application.ports.file_storage_provider import ExportFormat
+from app.application.dto.website_audit_dto import WebsiteAuditResult
 
 
 class LeadResponse(BaseModel):
@@ -21,8 +29,13 @@ class LeadResponse(BaseModel):
     reviews_count: int | None
     lead_score: int | None
     lead_score_summary: str | None
+    score_level: str | None
+    score_reasons: list[LeadScoringReason]
+    score_niche: str | None
+    score_calculated_at: datetime | None
     status: str
     owner_user_id: str | None
+    do_not_contact: bool
     tags: list[str]
     created_at: datetime
     updated_at: datetime
@@ -43,6 +56,8 @@ class ImportLeadsResponse(BaseModel):
 
 class UpdateLeadStatusBody(BaseModel):
     status: str
+    next_follow_up_at: datetime | None = None
+    do_not_contact: bool | None = None
 
 
 class AssignLeadBody(BaseModel):
@@ -57,3 +72,27 @@ class ExportLeadsBody(BaseModel):
 class ExportLeadsResponse(BaseModel):
     file_url: str
     total_exported: int
+
+
+class RecalculateLeadScoreBody(RecalculateLeadScoreRequest):
+    pass
+
+
+class LeadScoringResponse(LeadScoringResult):
+    pass
+
+
+class BulkRecalculateLeadScoreBody(BulkRecalculateLeadScoreRequest):
+    pass
+
+
+class BulkRecalculateLeadScoreResult(BulkRecalculateLeadScoreResponse):
+    pass
+
+
+class WebsiteAuditBody(BaseModel):
+    url: str | None = None
+
+
+class WebsiteAuditResponse(WebsiteAuditResult):
+    pass

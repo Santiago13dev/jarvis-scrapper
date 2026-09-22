@@ -1,6 +1,6 @@
 /**
  * Tipos TypeScript que reflejan los schemas Pydantic del backend
- * (infrastructure/api/v1/*/schemas.py). Mantener sincronizados manualmente
+ * (schemas.py dentro de infrastructure/api/v1). Mantener sincronizados manualmente
  * hasta que se genere un cliente desde el OpenAPI (/api/openapi.json).
  */
 
@@ -29,9 +29,22 @@ export interface Lead {
   lead_score_summary: string | null;
   status: LeadStatus;
   owner_user_id: string | null;
+  do_not_contact: boolean;
   tags: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface FollowUp {
+  id: string;
+  workspace_id: string;
+  lead_id: string;
+  status: "pending" | "due" | "completed" | "cancelled";
+  next_follow_up_at: string;
+  created_at: string;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  cancel_reason: string | null;
 }
 
 export type CampaignStatus = "draft" | "scheduled" | "running" | "paused" | "finished";

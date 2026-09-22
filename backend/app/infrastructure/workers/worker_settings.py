@@ -14,10 +14,12 @@ from arq.connections import RedisSettings
 
 from app.infrastructure.config.config import get_settings
 from app.infrastructure.workers.jobs.send_campaign_messages_job import send_campaign_messages
+from app.infrastructure.workers.jobs.recalculate_lead_scores_job import recalculate_lead_scores
+from app.infrastructure.workers.jobs.mark_follow_up_due_job import mark_follow_up_due
 
 settings = get_settings()
 
-functions = [send_campaign_messages]
+functions = [send_campaign_messages, recalculate_lead_scores, mark_follow_up_due]
 # TODO: agregar aquí futuros jobs (ej. import_leads_job, analyze_lead_job) a medida
 # que se conviertan en operaciones asíncronas de larga duración.
 

@@ -35,6 +35,7 @@ from app.infrastructure.adapters.file_storage.local_file_storage_adapter import 
 from app.infrastructure.adapters.messaging.openwa_adapter import OpenWAAdapter
 from app.infrastructure.adapters.queue.arq_queue_adapter import ArqQueueAdapter
 from app.infrastructure.adapters.scraper.google_maps_adapter import GoogleMapsScraperAdapter
+from app.application.services.website_audit_service import WebsiteAuditService
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.repositories import (
     PostgresCampaignRepository,
@@ -92,6 +93,10 @@ def get_messaging_provider() -> MessagingProvider:
 
 def get_scraper_provider() -> ScraperProvider:
     return GoogleMapsScraperAdapter()
+
+
+def get_website_audit_service() -> WebsiteAuditService:
+    return WebsiteAuditService()
 
 
 def get_file_storage_provider() -> FileStorageProvider:
