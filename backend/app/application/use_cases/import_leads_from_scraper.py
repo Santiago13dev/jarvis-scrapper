@@ -43,6 +43,7 @@ class ImportLeadsFromScraperUseCase:
         new_leads: list[Lead] = []
         skipped = 0
         existing_leads = list(await self._leads.list_by_workspace(request.workspace_id, limit=10000))
+        persisted_lead_ids = {lead.id for lead in existing_leads}
         existing_by_fingerprint = {
             fingerprint: lead
             for lead in existing_leads
@@ -71,7 +72,8 @@ class ImportLeadsFromScraperUseCase:
             )
             if existing is not None:
                 self._deduplication.merge(existing, candidate)
-                await self._leads.update(request.workspace_id, existing)
+                if existing.id in persisted_lead_ids:
+                    await self._leads.update(request.workspace_id, existing)
                 skipped += 1
                 continue
             new_leads.append(candidate)

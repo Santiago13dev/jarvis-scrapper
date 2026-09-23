@@ -12,7 +12,6 @@ import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
 import type { Lead, LeadStatus, MessageTemplate, Campaign, FollowUp } from "@/types/api";
 import dynamic from "next/dynamic";
-import * as XLSX from "xlsx";
 
 const BogotaMapMini = dynamic(
   () => import("@/components/ui/bogota-map-inner").then((m) => m.BogotaMapInner),
@@ -175,7 +174,8 @@ export default function LeadsPage() {
     }
   }
 
-  function handleExport() {
+  async function handleExport() {
+    const XLSX = await import("xlsx");
     const leadsToExport = selectedIds.size > 0
       ? displayLeads.filter((l) => selectedIds.has(l.id))
       : displayLeads;
@@ -356,6 +356,14 @@ export default function LeadsPage() {
               <button onClick={() => { setActiveFilters(new Set()); setMinRating(0); setPage(1); }} className="text-[11px] text-red font-medium hover:text-red/80 transition-colors">Borrar filtros</button>
             )}
           </div>
+          {selectedIds.size > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2.5">
+              <span className="text-[12px] font-medium text-accent">{selectedIds.size} negocios seleccionados</span>
+              <Button onClick={() => { setSelectedLead(null); loadCampaignsAndTemplates(); setCampaignModalOpen(true); }} className="bg-accent hover:bg-accent-hover text-white text-[12px]">
+                <Megaphone size={13} /> Crear campaña
+              </Button>
+            </div>
+          )}
         </div>
 
         <section className="rounded-lg border border-border/40 bg-card p-4">

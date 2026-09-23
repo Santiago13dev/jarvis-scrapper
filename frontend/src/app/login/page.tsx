@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { api, ApiError } from "@/lib/api-client";
 import { ArrowRight, Mail, Lock, Eye, EyeOff, CheckCircle2, Shield, TrendingUp, Brain } from "lucide-react";
@@ -64,9 +65,12 @@ export default function LoginPage() {
       {/* Background spans the entire page so it doesn't cut off behind the modal */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_45%,rgba(130,90,255,0.35),transparent_65%)]" />
-        <img
+        <Image
           src="/jarvis-bg.png"
           alt=""
+          fill
+          priority
+          sizes="100vw"
           className="absolute top-0 h-full w-[135%] object-cover"
           style={{ left: "-20%", filter: "brightness(1.45) contrast(1.08) saturate(1.15)" }}
         />

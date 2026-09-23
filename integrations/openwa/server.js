@@ -51,7 +51,11 @@ function initClient() {
   client.initialize().catch((err) => {
     console.error("[wa] Init failed:", err.message);
     sessionStatus = "ERROR";
-    setTimeout(initClient, 15000);
+    const failedClient = client;
+    client = null;
+    failedClient.destroy().catch(() => {}).finally(() => {
+      setTimeout(initClient, 15000);
+    });
   });
 }
 

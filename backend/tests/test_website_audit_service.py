@@ -21,7 +21,7 @@ async def test_audit_extracts_business_signals_without_browser(monkeypatch):
     async def skip_host_validation(url: str) -> None:
         return None
 
-    monkeypatch.setattr(WebsiteAuditService, "_validate_host", skip_host_validation)
+    monkeypatch.setattr(WebsiteAuditService, "_validate_host", staticmethod(skip_host_validation))
     service = WebsiteAuditService(httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     result = await service.audit("https://example.com")
 
