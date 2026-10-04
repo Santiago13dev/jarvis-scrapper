@@ -54,6 +54,20 @@ class ImportLeadsResponse(BaseModel):
     leads: list[LeadResponse]
 
 
+class LeadSearchHistoryBody(BaseModel):
+    query: str
+    filters: dict[str, object] | None = None
+
+
+class LeadSearchHistoryResponse(BaseModel):
+    id: str
+    workspace_id: str
+    query: str
+    filters: dict[str, object] | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class UpdateLeadStatusBody(BaseModel):
     status: str
     next_follow_up_at: datetime | None = None

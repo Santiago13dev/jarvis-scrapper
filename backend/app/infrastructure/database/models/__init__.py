@@ -6,7 +6,15 @@ from app.infrastructure.database.base import Base
 from .organization import OrganizationModel
 from .workspace import WorkspaceModel
 from .user import UserModel, WorkspaceMembershipModel
-from .lead import LeadFollowUpModel, LeadModel, LeadNoteModel, LeadScoringConfigModel, LeadTaskModel, WebAuditModel
+from .lead import (
+    LeadFollowUpModel,
+    LeadModel,
+    LeadNoteModel,
+    LeadScoringConfigModel,
+    LeadSearchHistoryModel,
+    LeadTaskModel,
+    WebAuditModel,
+)
 from .campaign import CampaignModel, campaign_leads_table
 from .conversation import ConversationModel, MessageModel
 from .template import MessageTemplateModel, DemoPageTemplateModel
@@ -21,6 +29,7 @@ __all__ = [
     "LeadNoteModel",
     "LeadTaskModel",
     "LeadFollowUpModel",
+    "LeadSearchHistoryModel",
     "WebAuditModel",
     "LeadScoringConfigModel",
     "CampaignModel",

@@ -129,11 +129,15 @@ class LeadDeduplicationService:
         digits = re.sub(r"\D", "", compact)
         if not digits:
             return None
+
         if compact.strip().startswith("00"):
             return "+" + digits[2:]
         if compact.strip().startswith("+"):
             return "+" + digits
+
         country = re.sub(r"\D", "", default_country_code or "")
+        if country and digits.startswith(country):
+            return "+" + digits
         return f"+{country}{digits}" if country else digits
 
     @staticmethod

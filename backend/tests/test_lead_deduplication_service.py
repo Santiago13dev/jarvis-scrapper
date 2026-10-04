@@ -68,3 +68,8 @@ def test_deduplicate_merges_records_matching_any_identity():
     assert len(unique) == 1
     assert merged_count == 1
     assert unique[0].name == "Acme"
+
+
+def test_normalize_phone_does_not_duplicate_country_code_when_already_present():
+    assert LeadDeduplicationService.normalize_phone("57 3001234567", default_country_code="57") == "+573001234567"
+    assert LeadDeduplicationService.normalize_phone("+57 3001234567", default_country_code="57") == "+573001234567"

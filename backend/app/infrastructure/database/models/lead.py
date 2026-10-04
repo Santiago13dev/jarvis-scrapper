@@ -113,6 +113,25 @@ class LeadModel(Base):
     tasks: Mapped[list["LeadTaskModel"]] = relationship(back_populates="lead", cascade="all, delete-orphan")
 
 
+class LeadSearchHistoryModel(Base):
+    __tablename__ = "lead_search_history"
+    __table_args__ = (
+        Index("ix_lead_search_history_workspace_updated", "workspace_id", "updated_at"),
+        Index("ix_lead_search_history_workspace_query", "workspace_id", "query"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    query: Mapped[str] = mapped_column(String(255), nullable=False)
+    filters: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class WebAuditModel(Base):
     __tablename__ = "lead_web_audits"
 

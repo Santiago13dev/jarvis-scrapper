@@ -26,14 +26,21 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const token = getAccessToken();
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch {
+    throw new Error(
+      "No se pudo conectar con la API. Verifica que backend y dependencias esten activos."
+    );
+  }
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

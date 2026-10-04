@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.dto.conversation_dto import ExportLeadsRequest
@@ -23,6 +24,8 @@ from app.application.ports.queue_provider import QueueProvider
 from app.application.ports.scraper_provider import ScraperProvider
 from app.application.use_cases.analyze_lead_with_ai import AnalyzeLeadWithAIUseCase
 from app.application.use_cases.audit_lead_website import AuditLeadWebsiteUseCase
+from app.application.services.lead_search_history_service import LeadSearchHistoryService
+from app.application.services.lead_search_service import LeadSearchService
 from app.application.services.website_audit_service import WebsiteAuditService
 from app.application.services.follow_up_service import FollowUpService
 from app.application.use_cases.export_leads import ExportLeadsUseCase
@@ -48,6 +51,8 @@ from .schemas import (
     ImportLeadsBody,
     ImportLeadsResponse,
     LeadResponse,
+    LeadSearchHistoryBody,
+    LeadSearchHistoryResponse,
     BulkRecalculateLeadScoreBody,
     BulkRecalculateLeadScoreResult,
     LeadScoringResponse,
@@ -94,11 +99,99 @@ def _to_response(lead: Lead) -> LeadResponse:
 async def list_leads(
     workspace_id: WorkspaceId,
     lead_repository: Annotated[LeadRepository, Depends(get_lead_repository)],
+    q: str | None = None,
+    status: str | None = None,
+    tag: str | None = None,
+    min_rating: float | None = None,
+    with_email: bool = False,
+    with_phone: bool = False,
+    without_website: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> list[LeadResponse]:
     leads = await lead_repository.list_by_workspace(workspace_id, limit=limit, offset=offset)
-    return [_to_response(lead) for lead in leads]
+    filtered = LeadSearchService().filter_and_rank(
+        leads,
+        query=q,
+        status=status,
+        tag=tag,
+        min_rating=min_rating,
+        has_email=with_email,
+        has_phone=with_phone,
+        without_website=without_website,
+    )
+    return [_to_response(lead) for lead in filtered]
+
+
+@router.get("/search-history", response_model=list[LeadSearchHistoryResponse])
+async def list_search_history(
+    workspace_id: WorkspaceId,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+    limit: int = 5,
+) -> list[LeadSearchHistoryResponse]:
+    from sqlalchemy import desc, select
+    from app.infrastructure.database.models.lead import LeadSearchHistoryModel
+
+    stmt = (
+        select(LeadSearchHistoryModel)
+        .where(LeadSearchHistoryModel.workspace_id == workspace_id)
+        .order_by(desc(LeadSearchHistoryModel.updated_at))
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return [
+        LeadSearchHistoryResponse(
+            id=item.id,
+            workspace_id=item.workspace_id,
+            query=item.query,
+            filters=item.filters or {},
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+        )
+        for item in result.scalars().all()
+    ]
+
+
+@router.post("/search-history", response_model=LeadSearchHistoryResponse)
+async def save_search_history(
+    workspace_id: WorkspaceId,
+    body: LeadSearchHistoryBody,
+    session: Annotated[AsyncSession, Depends(get_db_session)],
+) -> LeadSearchHistoryResponse:
+    from sqlalchemy import select
+    from app.infrastructure.database.models.lead import LeadSearchHistoryModel
+
+    query = LeadSearchHistoryService.normalize_query(body.query)
+    if not query:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "La búsqueda no puede estar vacía")
+
+    stmt = select(LeadSearchHistoryModel).where(
+        LeadSearchHistoryModel.workspace_id == workspace_id,
+        LeadSearchHistoryModel.query == query,
+    )
+    result = await session.execute(stmt)
+    item = result.scalar_one_or_none()
+
+    if item is None:
+        item = LeadSearchHistoryModel(
+            workspace_id=workspace_id,
+            query=query,
+            filters=body.filters or {},
+        )
+        session.add(item)
+    else:
+        item.filters = body.filters or {}
+        item.updated_at = datetime.now(timezone.utc)
+
+    await session.flush()
+    return LeadSearchHistoryResponse(
+        id=item.id,
+        workspace_id=item.workspace_id,
+        query=item.query,
+        filters=item.filters or {},
+        created_at=item.created_at,
+        updated_at=item.updated_at,
+    )
 
 
 @router.get("/{lead_id}", response_model=LeadResponse)
@@ -123,15 +216,34 @@ async def import_leads(
     event_bus: Annotated[EventBus, Depends(get_event_bus)],
 ) -> ImportLeadsResponse:
     use_case = ImportLeadsFromScraperUseCase(scraper_provider, lead_repository, event_bus)
-    result = await use_case.execute(
-        ImportLeadsRequest(
-            workspace_id=workspace_id,
-            keyword=body.keyword,
-            location=body.location,
-            max_results=body.max_results,
-            depth=body.depth,
+    try:
+        result = await use_case.execute(
+            ImportLeadsRequest(
+                workspace_id=workspace_id,
+                keyword=body.keyword,
+                location=body.location,
+                max_results=body.max_results,
+                depth=body.depth,
+            )
         )
-    )
+    except httpx.ConnectError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "No se pudo conectar al servicio de scraping. "
+                "Asegura que google-maps-scraper este levantado y vuelve a intentar."
+            ),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Fallo la comunicacion con el servicio de scraping.",
+        ) from exc
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
     await session.commit()
     return ImportLeadsResponse(
         imported_count=len(result.imported),

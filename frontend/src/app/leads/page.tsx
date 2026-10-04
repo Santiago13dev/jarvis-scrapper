@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Globe, Megaphone, Phone, RefreshCw, Search, Sparkles, Trash2, ChevronDown,
   Star, Download, Mail, MapPin, ExternalLink, X, CalendarClock, Check, Ban,
@@ -51,6 +51,7 @@ export default function LeadsPage() {
   const [selectedLead, setSelectedLead] = useState<{id: string; name: string; category: string; phone: string; email: string; website: string; rating: number | null; reviews: number | null; address: string; date: string; status: string} | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
   const [minRating, setMinRating] = useState<number>(0);
@@ -64,12 +65,52 @@ export default function LeadsPage() {
   const [followUps, setFollowUps] = useState<FollowUp[]>([]);
   const perPage = 10;
 
-  async function loadLeads(wsId: string) {
-    try { const result = await api.get<Lead[]>(`/workspaces/${wsId}/leads`); setLeads(result); }
-    catch (err) { setError(err instanceof Error ? err.message : "Error al cargar leads"); }
+  async function loadRecentSearches(wsId: string) {
+    try {
+      const result = await api.get<Array<{ query: string }>>(`/workspaces/${wsId}/leads/search-history`);
+      const items = result.map((item) => item.query).filter(Boolean);
+      setRecentSearches(items);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("jarvisia_recent_searches", JSON.stringify(items));
+      }
+    } catch {
+      const cached = JSON.parse(typeof window !== "undefined" ? window.localStorage.getItem("jarvisia_recent_searches") ?? "[]" : "[]");
+      setRecentSearches(Array.isArray(cached) ? cached : []);
+    }
   }
 
-  useEffect(() => { if (workspaceId) loadLeads(workspaceId); }, [workspaceId]);
+  function persistRecentSearch(query: string) {
+    const next = [query, ...recentSearches.filter((item) => item !== query)].slice(0, 5);
+    setRecentSearches(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("jarvisia_recent_searches", JSON.stringify(next));
+    }
+  }
+
+  const loadLeads = useCallback(async (wsId: string, queryOverride?: string) => {
+    try {
+      const params = new URLSearchParams();
+      const query = (queryOverride ?? searchQuery ?? "").trim();
+      if (query) params.set("q", query);
+      if (minRating > 0) params.set("min_rating", String(minRating));
+      if (activeFilters.has("Tiene email")) params.set("with_email", "true");
+      if (activeFilters.has("Tiene teléfono")) params.set("with_phone", "true");
+      if (activeFilters.has("Sin sitio web")) params.set("without_website", "true");
+      const queryString = params.toString();
+      const result = await api.get<Lead[]>(`/workspaces/${wsId}/leads${queryString ? `?${queryString}` : ""}`);
+      setLeads(result);
+    }
+    catch (err) { setError(err instanceof Error ? err.message : "Error al cargar leads"); }
+  }, [activeFilters, minRating, searchQuery]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = JSON.parse(window.localStorage.getItem("jarvisia_recent_searches") ?? "[]") as string[];
+      setRecentSearches(Array.isArray(saved) ? saved : []);
+    }
+  }, []);
+
+  useEffect(() => { if (workspaceId) { void loadLeads(workspaceId); void loadRecentSearches(workspaceId); } }, [workspaceId, loadLeads]);
 
   async function loadFollowUps(wsId: string) {
     try {
@@ -91,6 +132,19 @@ export default function LeadsPage() {
   async function rescheduleFollowUp(followUp: FollowUp) {
     const nextDate = window.prompt("Nueva fecha y hora (ISO)", new Date(followUp.next_follow_up_at).toISOString());
     if (nextDate) await updateFollowUp(`${followUp.id}/reschedule`, { next_follow_up_at: nextDate });
+  }
+
+  async function handleSearch() {
+    if (!workspaceId) return;
+    const trimmed = searchQuery.trim();
+    if (trimmed) {
+      persistRecentSearch(trimmed);
+      try {
+        await api.post(`/workspaces/${workspaceId}/leads/search-history`, { query: trimmed, filters: { min_rating: minRating, with_email: activeFilters.has("Tiene email"), with_phone: activeFilters.has("Tiene teléfono"), without_website: activeFilters.has("Sin sitio web") } });
+      } catch {}
+    }
+    await loadLeads(workspaceId, trimmed);
+    setPage(1);
   }
 
   async function handleImport() {
@@ -271,9 +325,9 @@ export default function LeadsPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-2">
               <Search size={14} className="text-ink-dim" />
-              <input type="text" placeholder="Buscar leads, negocios, categorías..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+              <input type="text" placeholder="Buscar leads, negocios, categorías..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} onKeyDown={(e) => { if (e.key === "Enter") { void handleSearch(); } }}
                 className="bg-transparent text-[12px] text-ink placeholder:text-ink-dim outline-none w-56" />
-              <span className="text-[10px] text-ink-dim border border-border/30 rounded px-1.5 py-0.5">⌘ K</span>
+              <button type="button" onClick={() => void handleSearch()} className="text-[10px] text-ink-dim border border-border/30 rounded px-1.5 py-0.5 hover:text-ink">Buscar</button>
             </div>
             <button onClick={() => { if (!isAuthenticated) { setError("Iniciá sesión para importar leads desde Google Maps"); return; } setImportModalOpen(true); }} disabled={importing}
               className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-50">
@@ -294,7 +348,7 @@ export default function LeadsPage() {
             const withPhone = allLeads.filter((l) => l.phone && l.phone !== "—");
             const withWeb = allLeads.filter((l) => l.website && l.website !== "—");
             const stats = [
-              { label: "Contactos", value: allLeads.length.toLocaleString(), icon: Users, color: "bg-accent/15 text-accent" },
+              { label: "Contactos", value: allLeads.length.toLocaleString(), icon: UsersIcon, color: "bg-accent/15 text-accent" },
               { label: "Con correo", value: withEmail.length.toLocaleString(), icon: Mail, color: "bg-blue/15 text-blue" },
               { label: "Con teléfono", value: withPhone.length.toLocaleString(), icon: Phone, color: "bg-teal/15 text-teal" },
               { label: "Con sitio web", value: withWeb.length.toLocaleString(), icon: Globe, color: "bg-amber/15 text-amber" },
@@ -336,8 +390,17 @@ export default function LeadsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            {recentSearches.length > 0 && (
+              <div className="flex items-center gap-2 pr-2 border-r border-border/30 mr-1">
+                {recentSearches.map((term) => (
+                  <button key={term} onClick={() => { setSearchQuery(term); void loadLeads(workspaceId!, term); }} className="rounded-full border border-border/40 bg-input px-2 py-1 text-[10px] text-ink-muted hover:text-ink hover:border-border">
+                    {term}
+                  </button>
+                ))}
+              </div>
+            )}
             {["Tiene email", "Tiene teléfono", "Tiene sitio web", "Sin sitio web"].map((f) => (
-              <button key={f} onClick={() => { setPage(1); setActiveFilters((prev) => { const n = new Set(prev); n.has(f) ? n.delete(f) : n.add(f); return n; }); }}
+              <button key={f} onClick={() => { setPage(1); setActiveFilters((prev) => { const n = new Set(prev); n.has(f) ? n.delete(f) : n.add(f); return n; }); void loadLeads(workspaceId!, searchQuery); }}
                 className={`rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors ${activeFilters.has(f) ? "border-accent/40 bg-accent/10 text-accent" : "border-border/40 bg-input text-ink-muted hover:text-ink hover:border-border"}`}>
                 {f}
               </button>
@@ -654,4 +717,4 @@ export default function LeadsPage() {
   );
 }
 
-function Users(props: any) { return <svg xmlns="http://www.w3.org/2000/svg" width={props.size||24} height={props.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>; }
+function UsersIcon(props: any) { return <svg xmlns="http://www.w3.org/2000/svg" width={props.size||24} height={props.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>; }
