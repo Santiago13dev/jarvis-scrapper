@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import re
 import socket
 import time
 from datetime import datetime, timezone
@@ -147,6 +148,7 @@ class WebsiteAuditService:
         )
         social_links = links_matching(lambda href: any(domain in href for domain in social_domains))
         chatbot_widgets = cls._find_chatbots(soup)
+        emails = cls._find_emails(soup)
         meta_description = soup.find("meta", attrs={"name": lambda value: value and value.lower() == "description"})
         viewport = soup.find("meta", attrs={"name": lambda value: value and value.lower() == "viewport"})
         title = soup.title.get_text(" ", strip=True) if soup.title else None
@@ -165,10 +167,31 @@ class WebsiteAuditService:
             booking_links=booking_links,
             chatbot_widgets=chatbot_widgets,
             social_links=social_links,
+            emails=emails,
             response_time_ms=response_time_ms,
             content_bytes=len(content),
             audited_at=datetime.now(timezone.utc),
         )
+
+    @staticmethod
+    def _find_emails(soup: BeautifulSoup) -> list[str]:
+        """Correos publicados en el sitio: enlaces mailto: y direcciones visibles en el texto."""
+        found: list[str] = []
+        for tag in soup.select('a[href^="mailto:" i]'):
+            address = tag.get("href", "")[7:].split("?")[0].strip()
+            if address:
+                found.append(address)
+        text = soup.get_text(" ", strip=True)
+        found += re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}", text)
+        unique: list[str] = []
+        for address in found:
+            address = address.lower().strip(".")
+            # Descarta imágenes con @2x y correos de ejemplo de plantillas.
+            if address.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")) or address.split("@")[-1] in {"example.com", "dominio.com", "email.com", "sentry.io"}:
+                continue
+            if address not in unique:
+                unique.append(address)
+        return unique[:5]
 
     @staticmethod
     def _find_chatbots(soup: BeautifulSoup) -> list[str]:

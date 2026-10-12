@@ -15,6 +15,7 @@ class ImportLeadsRequest:
     location: str
     max_results: int = 100
     depth: int = 1
+    extract_emails: bool = False
 
 
 @dataclass(frozen=True)

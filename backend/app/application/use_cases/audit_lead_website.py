@@ -44,6 +44,23 @@ class AuditLeadWebsiteUseCase:
         model.result = audit_result.model_dump(mode="json")
         await self._session.flush()
 
+        # Completa el lead con lo que el sitio publica (sin sobrescribir datos existentes).
+        changed = False
+        if not lead.email and audit_result.emails:
+            lead.email, changed = audit_result.emails[0], True
+        if not lead.whatsapp and audit_result.whatsapp_links:
+            digits = "".join(ch for ch in audit_result.whatsapp_links[0] if ch.isdigit())
+            if len(digits) >= 10:
+                lead.whatsapp, changed = digits, True
+        for link in audit_result.social_links:
+            lowered = link.lower()
+            if not lead.instagram and "instagram.com" in lowered:
+                lead.instagram, changed = link, True
+            elif not lead.facebook and "facebook.com" in lowered:
+                lead.facebook, changed = link, True
+        if changed:
+            await self._leads.update(workspace_id, lead)
+
         await RecalculateLeadScoreUseCase(self._leads, self._session).execute(
             workspace_id,
             lead_id,

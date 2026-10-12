@@ -214,3 +214,30 @@ class LeadFollowUpModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class LeadImportJobModel(Base):
+    """Búsqueda de Google Maps que corre en segundo plano (worker ARQ)."""
+
+    __tablename__ = "lead_import_jobs"
+    __table_args__ = (Index("ix_lead_import_jobs_workspace_created", "workspace_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    requested_by_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    keyword: Mapped[str] = mapped_column(String(255), nullable=False)
+    location: Mapped[str] = mapped_column(String(255), nullable=False)
+    max_results: Mapped[int] = mapped_column(Integer, nullable=False)
+    depth: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    extract_emails: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # queued → running → done | failed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", server_default="queued")
+    # searching → importing → auditing (solo informativo para la interfaz)
+    stage: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    found: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    imported: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    skipped: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

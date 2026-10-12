@@ -16,10 +16,11 @@ from app.infrastructure.config.config import get_settings
 from app.infrastructure.workers.jobs.send_campaign_messages_job import send_campaign_messages
 from app.infrastructure.workers.jobs.recalculate_lead_scores_job import recalculate_lead_scores
 from app.infrastructure.workers.jobs.mark_follow_up_due_job import mark_follow_up_due
+from app.infrastructure.workers.jobs.import_leads_job import audit_leads_job, import_leads_job
 
 settings = get_settings()
 
-functions = [send_campaign_messages, recalculate_lead_scores, mark_follow_up_due]
+functions = [send_campaign_messages, recalculate_lead_scores, mark_follow_up_due, import_leads_job, audit_leads_job]
 # TODO: agregar aquí futuros jobs (ej. import_leads_job, analyze_lead_job) a medida
 # que se conviertan en operaciones asíncronas de larga duración.
 
@@ -28,3 +29,5 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
     functions = functions
     max_jobs = 20
+    # Una búsqueda grande + auditorías puede pasar los 5 minutos por defecto de ARQ.
+    job_timeout = 1800

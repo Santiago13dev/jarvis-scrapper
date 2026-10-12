@@ -13,6 +13,7 @@ from app.infrastructure.api.v1.auth.router import router as auth_router
 from app.infrastructure.api.v1.campaigns.router import router as campaigns_router
 from app.infrastructure.api.v1.dashboard.router import router as dashboard_router
 from app.infrastructure.api.v1.leads.router import router as leads_router
+from app.infrastructure.api.v1.prospecting.router import router as prospecting_router
 from app.infrastructure.api.v1.follow_ups.router import router as follow_ups_router
 from app.infrastructure.api.v1.templates.router import router as templates_router
 from app.infrastructure.api.v1.users.router import router as users_router
@@ -56,6 +57,8 @@ def create_app() -> FastAPI:
 
     # Rutas scoped por workspace (Organization → Workspace → User)
     workspace_prefix = "/api/v1/workspaces/{workspace_id}"
+    # Prospección primero: sus rutas fijas (/import-jobs, /outreach-queue) no deben caer en /{lead_id}.
+    app.include_router(prospecting_router, prefix=f"{workspace_prefix}/leads", tags=["prospecting"])
     app.include_router(leads_router, prefix=f"{workspace_prefix}/leads", tags=["leads"])
     app.include_router(follow_ups_router, prefix=f"{workspace_prefix}/follow-ups", tags=["follow-ups"])
     app.include_router(campaigns_router, prefix=f"{workspace_prefix}/campaigns", tags=["campaigns"])

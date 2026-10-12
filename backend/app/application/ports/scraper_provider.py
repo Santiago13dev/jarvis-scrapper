@@ -23,6 +23,7 @@ class ScrapedBusiness:
     latitude: float | None
     longitude: float | None
     raw_source_id: str | None  # id/place_id original, útil para deduplicación
+    email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class ScrapeQuery:
     max_results: int = 100
     language: str | None = None
     depth: int = 1
+    extract_emails: bool = False  # el scraper visita el sitio de cada negocio (más lento)
 
 
 class ScraperProvider(ABC):

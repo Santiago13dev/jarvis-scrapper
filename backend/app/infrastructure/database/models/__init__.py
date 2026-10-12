@@ -7,6 +7,7 @@ from .organization import OrganizationModel
 from .workspace import WorkspaceModel
 from .user import UserModel, WorkspaceMembershipModel
 from .lead import (
+    LeadImportJobModel,
     LeadFollowUpModel,
     LeadModel,
     LeadNoteModel,
