@@ -15,14 +15,16 @@ class WebAuditInput(BaseModel):
 
 
 class LeadScoringWeights(BaseModel):
-    rating: float = Field(default=20, ge=0)
+    """Pesos del potencial de venta. Mitad «vale la pena», mitad «necesita ayuda digital»."""
+
+    rating: float = Field(default=15, ge=0)
     reviews: float = Field(default=15, ge=0)
-    contact: float = Field(default=15, ge=0)
-    website: float = Field(default=10, ge=0)
-    https: float = Field(default=10, ge=0)
-    reachable: float = Field(default=10, ge=0)
+    contact: float = Field(default=20, ge=0)
+    website: float = Field(default=25, ge=0)
+    https: float = Field(default=5, ge=0)
+    reachable: float = Field(default=5, ge=0)
     mobile: float = Field(default=5, ge=0)
-    seo: float = Field(default=10, ge=0)
+    seo: float = Field(default=5, ge=0)
     performance: float = Field(default=5, ge=0)
 
     def normalized(self) -> dict[str, float]:

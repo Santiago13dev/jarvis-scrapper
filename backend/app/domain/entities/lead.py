@@ -52,6 +52,7 @@ class Lead:
     whatsapp: str | None = None
     instagram: str | None = None
     facebook: str | None = None
+    listing_url: str | None = None  # ficha en directorio (Restaurant Guru, Tripadvisor…)
     category: str | None = None
     rating: float | None = None
     reviews_count: int | None = None
@@ -70,6 +71,8 @@ class Lead:
     score_calculated_at: datetime | None = None
     status: LeadStatus = LeadStatus.NEW
     owner_user_id: str | None = None  # responsable
+    last_contacted_at: datetime | None = None
+    contact_attempts: int = 0
     tags: list[str] = field(default_factory=list)
     notes: list[LeadNote] = field(default_factory=list)
     tasks: list[LeadTask] = field(default_factory=list)
@@ -100,6 +103,14 @@ class Lead:
     def add_tag(self, tag: str) -> None:
         if tag not in self.tags:
             self.tags.append(tag)
+
+    def register_contact(self, when: datetime | None = None) -> None:
+        """Registra un intento de contacto (WhatsApp, llamada, correo)."""
+        self.last_contacted_at = when or datetime.now(timezone.utc)
+        self.contact_attempts += 1
+        if self.status == LeadStatus.NEW:
+            self.status = LeadStatus.CONTACTED
+        self.updated_at = datetime.now(timezone.utc)
 
     def change_status(self, new_status: LeadStatus) -> None:
         self.status = new_status
