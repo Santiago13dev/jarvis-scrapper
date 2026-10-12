@@ -9,6 +9,20 @@ import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
 import type { MessageTemplate } from "@/types/api";
 
+// Deben coincidir con app/domain/services/outreach.py (render_message).
+const VARIABLES = [
+  { key: "negocio", label: "Nombre del negocio", sample: "Panadería La Espiga" },
+  { key: "categoria", label: "Categoría", sample: "panadería" },
+  { key: "ciudad", label: "Zona", sample: "Chapinero" },
+  { key: "calificacion", label: "Calificación", sample: "4,7" },
+  { key: "resenas", label: "Reseñas", sample: "312" },
+  { key: "oportunidad", label: "Oportunidad detectada", sample: "todavía no tiene página web propia" },
+];
+
+function preview(text: string) {
+  return VARIABLES.reduce((acc, v) => acc.split(`{{${v.key}}}`).join(v.sample), text.split("{{lead_name}}").join(VARIABLES[0].sample));
+}
+
 export default function TemplatesPage() {
   const { workspaceId } = useActiveWorkspace();
   const [templates, setTemplates] = useState<MessageTemplate[] | null>(null);
@@ -57,7 +71,7 @@ export default function TemplatesPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <h1 className="font-display text-xl font-bold text-ink">Plantillas</h1>
-            <p className="text-[12px] text-ink-muted mt-0.5">Mensajes predefinidos para campañas de outreach</p>
+            <p className="text-[12px] text-ink-muted mt-0.5">Mensajes con datos de cada negocio para «Contactar hoy» y campañas</p>
           </div>
           <Button onClick={openCreateModal} className="self-start bg-accent hover:bg-accent-hover text-white sm:self-auto"><Plus size={14} /> Nueva plantilla</Button>
         </div>
@@ -107,9 +121,28 @@ export default function TemplatesPage() {
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Mensaje</label>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {VARIABLES.map((v) => (
+                <button
+                  key={v.key}
+                  type="button"
+                  title={`Ej.: ${v.sample}`}
+                  onClick={() => setContent((prev) => `${prev}${prev && !prev.endsWith(" ") ? " " : ""}{{${v.key}}}`)}
+                  className="rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11px] text-accent hover:bg-accent/20"
+                >
+                  + {v.label}
+                </button>
+              ))}
+            </div>
             <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5}
-              placeholder="Hola {nombre}, vi tu negocio {categoria} en Google Maps..."
+              placeholder="Hola, vi {{negocio}} en Google Maps y noté que {{oportunidad}}..."
               className="w-full rounded-lg border border-border/50 bg-input px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-dim focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-colors resize-none" />
+            {content.includes("{{") && (
+              <div className="mt-3 rounded-lg border border-border/40 bg-void/40 p-3">
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-dim">Así se verá</p>
+                <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-ink-muted">{preview(content)}</p>
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">

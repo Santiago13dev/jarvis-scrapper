@@ -10,9 +10,11 @@ Se exportan dos routers distintos porque tienen semánticas de auth diferentes:
 """
 from __future__ import annotations
 
+import hmac
+import logging
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.dto.conversation_dto import (
@@ -49,7 +51,28 @@ from .schemas import (
     WhatsAppSessionStatusResponse,
 )
 
-webhook_router = APIRouter()
+logger = logging.getLogger(__name__)
+
+
+async def verify_openwa_webhook(x_webhook_secret: Annotated[str | None, Header()] = None) -> None:
+    """
+    El webhook es público: sin secreto, cualquiera podría inyectar mensajes en un
+    workspace y provocar respuestas automáticas desde el número de la agencia.
+    """
+    from app.infrastructure.config.config import get_settings
+
+    settings = get_settings()
+    expected = settings.openwa_webhook_secret
+    if not expected:
+        if settings.is_production:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Webhook deshabilitado: falta OPENWA_WEBHOOK_SECRET")
+        logger.warning("Webhook de WhatsApp sin OPENWA_WEBHOOK_SECRET (solo aceptable en desarrollo)")
+        return
+    if not x_webhook_secret or not hmac.compare_digest(x_webhook_secret, expected):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Firma del webhook inválida")
+
+
+webhook_router = APIRouter(dependencies=[Depends(verify_openwa_webhook)])
 router = APIRouter()
 
 WorkspaceId = Annotated[str, Depends(require_workspace_access)]

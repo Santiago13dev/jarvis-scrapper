@@ -30,6 +30,7 @@ class LeadMapper:
             whatsapp=model.whatsapp,
             instagram=model.instagram,
             facebook=model.facebook,
+            listing_url=model.listing_url,
             category=model.category,
             rating=model.rating,
             reviews_count=model.reviews_count,
@@ -47,6 +48,8 @@ class LeadMapper:
             score_calculated_at=model.score_calculated_at,
             status=LeadStatus(model.status),
             owner_user_id=model.owner_user_id,
+            last_contacted_at=model.last_contacted_at,
+            contact_attempts=model.contact_attempts or 0,
             tags=model.tags.split(",") if model.tags else [],
             notes=[
                 LeadNote(
@@ -81,6 +84,7 @@ class LeadMapper:
             whatsapp=entity.whatsapp,
             instagram=entity.instagram,
             facebook=entity.facebook,
+            listing_url=entity.listing_url,
             category=entity.category,
             rating=entity.rating,
             reviews_count=entity.reviews_count,
@@ -99,6 +103,8 @@ class LeadMapper:
             score_calculated_at=entity.score_calculated_at,
             status=entity.status.value,
             owner_user_id=entity.owner_user_id,
+            last_contacted_at=entity.last_contacted_at,
+            contact_attempts=entity.contact_attempts,
             tags=",".join(entity.tags) if entity.tags else None,
             created_at=entity.created_at,
             updated_at=entity.updated_at,

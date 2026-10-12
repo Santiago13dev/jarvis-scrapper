@@ -19,6 +19,7 @@ class WebsiteAuditResult(BaseModel):
     booking_links: list[str] = Field(default_factory=list)
     chatbot_widgets: list[str] = Field(default_factory=list)
     social_links: list[str] = Field(default_factory=list)
+    emails: list[str] = Field(default_factory=list)
     response_time_ms: int | None = None
     content_bytes: int = 0
     audited_at: datetime

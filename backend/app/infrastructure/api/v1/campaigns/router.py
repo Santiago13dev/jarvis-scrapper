@@ -98,6 +98,14 @@ async def change_campaign_status(
     queue_provider: Annotated[QueueProvider, Depends(get_queue_provider)],
     event_bus: Annotated[EventBus, Depends(get_event_bus)],
 ) -> CampaignResponse:
+    from app.infrastructure.config.config import get_settings
+
+    if body.action in ("start", "resume", "run") and get_settings().whatsapp_provider.lower() == "assisted":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Modo asistido: los mensajes de la campaña se envían desde «Contactar hoy», uno por uno, "
+            "con el texto ya listo. Para envíos automáticos configura la API oficial de WhatsApp.",
+        )
     use_case = ChangeCampaignStatusUseCase(campaign_repository, queue_provider, event_bus)
     try:
         campaign = await use_case.execute(

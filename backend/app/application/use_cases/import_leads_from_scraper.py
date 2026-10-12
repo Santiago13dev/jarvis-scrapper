@@ -13,7 +13,9 @@ from app.application.ports.event_bus import EventBus
 from app.application.ports.repositories.lead_repository import LeadRepository
 from app.application.ports.scraper_provider import ScraperProvider, ScrapeQuery
 from app.application.services.lead_deduplication_service import LeadDeduplicationService
+from app.application.services.lead_scoring_service import LeadScoringService
 from app.domain.entities.lead import Lead
+from app.domain.services.lead_enrichment import apply_enrichment
 from app.domain.events.domain_events import LeadImportedEvent
 
 
@@ -37,8 +39,10 @@ class ImportLeadsFromScraperUseCase:
                 location=request.location,
                 max_results=request.max_results,
                 depth=request.depth,
+                extract_emails=request.extract_emails,
             )
         )
+        scoring = LeadScoringService()
 
         new_leads: list[Lead] = []
         skipped = 0
@@ -63,7 +67,12 @@ class ImportLeadsFromScraperUseCase:
                     reviews_count=business.reviews_count,
                     latitude=business.latitude,
                     longitude=business.longitude,
+                    email=business.email,
                 )
+            # WhatsApp, redes y sitio propio vs. directorio; luego el puntaje inicial
+            # (los sitios propios se auditan después y el puntaje se recalcula).
+            apply_enrichment(candidate)
+            candidate.apply_deterministic_score(scoring.calculate(candidate))
             identity = self._deduplication.identify(candidate)
             self._deduplication.apply_identity(candidate, identity)
             existing = next(

@@ -5,7 +5,12 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2, MessageCircle, Megaphone, Users } from "lucide-react";
 import { api } from "@/lib/api-client";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
-import type { Campaign, Conversation, DashboardSummary, Lead } from "@/types/api";
+import { PresenceBadge, ScoreBadge } from "@/components/leads/lead-badges";
+import type { Campaign, Conversation, DashboardSummary, OutreachItem } from "@/types/api";
+
+const CAMPAIGN_STATUS: Record<string, string> = {
+  draft: "Borrador", scheduled: "Programada", running: "Activa", paused: "Pausada", finished: "Terminada",
+};
 
 const METRICS = [
   { key: "total_leads", label: "Leads disponibles", icon: Users, tone: "text-blue bg-blue/10" },
@@ -17,7 +22,7 @@ const METRICS = [
 export function LiveDashboard() {
   const { workspaceId, loading: workspaceLoading } = useActiveWorkspace();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<OutreachItem[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +31,7 @@ export function LiveDashboard() {
     if (!workspaceId) return;
     Promise.all([
       api.get<DashboardSummary>(`/workspaces/${workspaceId}/dashboard/summary`),
-      api.get<Lead[]>(`/workspaces/${workspaceId}/leads?limit=5`),
+      api.get<OutreachItem[]>(`/workspaces/${workspaceId}/leads/outreach-queue?limit=5`),
       api.get<Campaign[]>(`/workspaces/${workspaceId}/campaigns`),
       api.get<Conversation[]>(`/workspaces/${workspaceId}/whatsapp/conversations`),
     ])
@@ -47,11 +52,11 @@ export function LiveDashboard() {
       <section className="flex flex-col gap-4 border-b border-border/40 pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue">Centro de operaciones</p>
-          <h2 className="mt-1 font-display text-2xl font-bold text-ink sm:text-3xl">Actividad de tu workspace</h2>
-          <p className="mt-1 text-[13px] text-ink-muted">Datos actualizados desde tus campañas, leads y conversaciones.</p>
+          <h2 className="mt-1 font-display text-2xl font-bold text-ink sm:text-3xl">Tu prospección hoy</h2>
+          <p className="mt-1 text-[13px] text-ink-muted">Resumen en vivo de tus leads, campañas y conversaciones.</p>
         </div>
         <Link href="/leads" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue px-4 text-[13px] font-semibold text-white transition-colors hover:bg-blue/85">
-          Buscar leads <ArrowRight size={15} />
+          Buscar negocios <ArrowRight size={15} />
         </Link>
       </section>
 
@@ -77,15 +82,16 @@ export function LiveDashboard() {
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-5">
         <div className="rounded-lg border border-border/50 bg-card lg:col-span-3">
           <div className="flex items-center justify-between border-b border-border/30 px-4 py-4 sm:px-5">
-            <div><h3 className="font-display text-sm font-bold text-ink">Leads recientes</h3><p className="mt-0.5 text-[11px] text-ink-muted">Registros reales de tu base comercial</p></div>
-            <Link href="/leads" className="text-[12px] font-medium text-blue hover:text-blue/80">Ver todos</Link>
+            <div><h3 className="font-display text-sm font-bold text-ink">Mejores oportunidades</h3><p className="mt-0.5 text-[11px] text-ink-muted">Negocios con más potencial que aún no has contactado</p></div>
+            <Link href="/outreach" className="text-[12px] font-medium text-blue hover:text-blue/80">Contactar hoy</Link>
           </div>
           {leads.length > 0 ? <div className="divide-y divide-border/25">{leads.map((lead) => (
-            <div key={lead.id} className="flex items-center justify-between gap-4 px-4 py-3.5 sm:px-5">
-              <div className="min-w-0"><p className="truncate text-[13px] font-medium text-ink">{lead.name || "Sin nombre"}</p><p className="mt-0.5 truncate text-[11px] text-ink-muted">{lead.category || lead.address || "Sin categoría"}</p></div>
-              <span className="shrink-0 rounded-md border border-border/40 bg-input px-2 py-1 text-[10px] font-medium capitalize text-ink-muted">{lead.status}</span>
+            <div key={lead.lead_id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+              <ScoreBadge score={lead.lead_score} size="sm" />
+              <div className="min-w-0 flex-1"><p className="truncate text-[13px] font-medium text-ink">{lead.name || "Sin nombre"}</p><p className="mt-0.5 truncate text-[11px] text-ink-muted">{lead.category || lead.address || "Sin categoría"}</p></div>
+              <span className="hidden sm:inline"><PresenceBadge lead={{ website: lead.website, instagram: lead.instagram, facebook: null, listing_url: null, tags: [] }} /></span>
             </div>
-          ))}</div> : <EmptyState href="/leads" action="Importar leads" text="Todavía no hay leads. Inicia una búsqueda para comenzar a construir tu base." />}
+          ))}</div> : <EmptyState href="/leads" action="Buscar negocios" text="No hay prospectos pendientes. Busca negocios para llenar tu lista." />}
         </div>
 
         <div className="rounded-lg border border-border/50 bg-card lg:col-span-2">
@@ -101,7 +107,7 @@ export function LiveDashboard() {
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-border/50 bg-card">
           <div className="flex items-center justify-between border-b border-border/30 px-4 py-4 sm:px-5"><h3 className="font-display text-sm font-bold text-ink">Campañas</h3><Link href="/campaigns" className="text-[12px] font-medium text-blue hover:text-blue/80">Gestionar</Link></div>
-          {recentCampaigns.length > 0 ? <div className="divide-y divide-border/25">{recentCampaigns.map((campaign) => <div key={campaign.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5"><p className="truncate text-[13px] font-medium text-ink">{campaign.name}</p><span className="shrink-0 text-[11px] capitalize text-ink-muted">{campaign.status}</span></div>)}</div> : <EmptyState href="/leads" action="Crear campaña" text="No hay campañas creadas todavía." />}
+          {recentCampaigns.length > 0 ? <div className="divide-y divide-border/25">{recentCampaigns.map((campaign) => <div key={campaign.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5"><p className="truncate text-[13px] font-medium text-ink">{campaign.name}</p><span className="shrink-0 text-[11px] text-ink-muted">{CAMPAIGN_STATUS[campaign.status] ?? campaign.status}</span></div>)}</div> : <EmptyState href="/leads" action="Crear campaña" text="No hay campañas creadas todavía." />}
         </div>
         <div className="rounded-lg border border-border/50 bg-card">
           <div className="flex items-center justify-between border-b border-border/30 px-4 py-4 sm:px-5"><h3 className="font-display text-sm font-bold text-ink">Conversaciones</h3><Link href="/conversations" className="text-[12px] font-medium text-blue hover:text-blue/80">Abrir bandeja</Link></div>

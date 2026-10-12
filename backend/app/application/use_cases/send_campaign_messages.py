@@ -13,6 +13,7 @@ from app.application.ports.repositories.conversation_repository import Conversat
 from app.application.ports.repositories.lead_repository import LeadRepository
 from app.application.ports.repositories.template_repository import TemplateRepository
 from app.domain.entities.conversation import Conversation, Message, MessageDirection, MessageSender
+from app.domain.services.outreach import render_message
 
 
 class SendCampaignMessagesUseCase:
@@ -43,15 +44,23 @@ class SendCampaignMessagesUseCase:
         sent_count = 0
         for lead_id in campaign.lead_ids:
             lead = await self._leads.get_by_id(workspace_id, lead_id)
-            if lead is None or not lead.whatsapp and not lead.phone:
+            # Nunca se escribe a quien pidió no ser contactado.
+            if lead is None or lead.do_not_contact or not lead.whatsapp and not lead.phone:
                 continue
 
             phone = lead.whatsapp or lead.phone
-            rendered_text = template.render({"lead_name": lead.name})
+            rendered_text = render_message(template.content, lead)
 
-            await self._messaging.send_message(
-                OutboundMessage(tenant_id=workspace_id, to_phone=phone, text=rendered_text)
-            )
+            send_template = getattr(self._messaging, "send_template", None)
+            if send_template is not None and getattr(self._messaging, "_template", ""):
+                # API oficial: el primer contacto debe usar la plantilla aprobada por Meta.
+                await send_template(phone, [lead.name])
+            else:
+                await self._messaging.send_message(
+                    OutboundMessage(tenant_id=workspace_id, to_phone=phone, text=rendered_text)
+                )
+            lead.register_contact()
+            await self._leads.update(workspace_id, lead)
 
             conversation = await self._conversations.get_by_phone(workspace_id, phone)
             if conversation is None:

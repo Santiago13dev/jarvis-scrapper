@@ -22,17 +22,75 @@ export interface Lead {
   website: string | null;
   email: string | null;
   whatsapp: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  /** Ficha en directorio (Restaurant Guru, Tripadvisor…) que Maps mostraba como «sitio web». */
+  listing_url: string | null;
   category: string | null;
   rating: number | null;
   reviews_count: number | null;
   lead_score: number | null;
   lead_score_summary: string | null;
+  score_level: "high" | "medium" | "low" | null;
+  score_reasons: ScoreReason[];
   status: LeadStatus;
   owner_user_id: string | null;
+  last_contacted_at: string | null;
+  contact_attempts: number;
+  latitude: number | null;
+  longitude: number | null;
   do_not_contact: boolean;
   tags: string[];
   created_at: string;
   updated_at: string;
+}
+
+export interface ScoreReason {
+  description: string;
+  points: number;
+}
+
+export interface ImportJob {
+  id: string;
+  keyword: string;
+  location: string;
+  max_results: number;
+  extract_emails: boolean;
+  status: "queued" | "running" | "done" | "failed";
+  stage: "searching" | "importing" | "auditing" | null;
+  found: number;
+  imported: number;
+  skipped: number;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface OutreachItem {
+  lead_id: string;
+  name: string;
+  category: string | null;
+  address: string | null;
+  rating: number | null;
+  reviews_count: number | null;
+  lead_score: number | null;
+  score_level: "high" | "medium" | "low" | null;
+  whatsapp: string;
+  instagram: string | null;
+  website: string | null;
+  status: LeadStatus;
+  contact_attempts: number;
+  last_contacted_at: string | null;
+  message: string;
+  whatsapp_url: string;
+}
+
+export interface EnrichResult {
+  processed: number;
+  with_whatsapp: number;
+  without_website: number;
+  audits_queued: number;
 }
 
 export interface FollowUp {
@@ -107,4 +165,13 @@ export interface Workspace {
   name: string;
   business_category: string | null;
   is_active: boolean;
+}
+
+export interface WorkspaceSettings {
+  id: string;
+  name: string;
+  business_category: string | null;
+  knowledge_base: string;
+  whatsapp_provider: "assisted" | "cloud_api" | "openwa";
+  ai_enabled: boolean;
 }

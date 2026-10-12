@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
-import type { Campaign, Lead, MessageTemplate } from "@/types/api";
+import Link from "next/link";
+import type { Campaign, Lead, MessageTemplate, WorkspaceSettings } from "@/types/api";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-ink-dim/15 text-ink-muted border-ink-dim/20",
@@ -29,6 +30,7 @@ export default function CampaignsPage() {
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [provider, setProvider] = useState<WorkspaceSettings["whatsapp_provider"] | null>(null);
 
   async function loadCampaigns(wsId: string) {
     try { const result = await api.get<Campaign[]>(`/workspaces/${wsId}/campaigns`); setCampaigns(result); }
@@ -36,16 +38,21 @@ export default function CampaignsPage() {
   }
 
   useEffect(() => { if (workspaceId) loadCampaigns(workspaceId); }, [workspaceId]);
+  useEffect(() => {
+    if (!workspaceId) return;
+    api.get<WorkspaceSettings>(`/workspaces/${workspaceId}/settings`).then((s) => setProvider(s.whatsapp_provider)).catch(() => setProvider(null));
+  }, [workspaceId]);
 
   async function openCreateDialog() {
     if (!workspaceId) return;
     setError(null);
     try {
       const [availableLeads, availableTemplates] = await Promise.all([
-        api.get<Lead[]>(`/workspaces/${workspaceId}/leads`),
+        api.get<Lead[]>(`/workspaces/${workspaceId}/leads?limit=5000`),
         api.get<MessageTemplate[]>(`/workspaces/${workspaceId}/templates/messages`),
       ]);
-      setLeads(availableLeads);
+      // Solo negocios a los que se les puede escribir y que no pidieron salir.
+      setLeads(availableLeads.filter((lead) => lead.whatsapp && !lead.do_not_contact).sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0)));
       setTemplates(availableTemplates);
       setSelectedLeadIds(new Set());
       setSelectedTemplateId(availableTemplates[0]?.id ?? "");
@@ -76,7 +83,7 @@ export default function CampaignsPage() {
   }
 
   const selectableLeads = noWebsiteOnly
-    ? leads.filter((lead) => !lead.website || lead.website === "—")
+    ? leads.filter((lead) => !lead.website)
     : leads;
 
   async function handleAction(campaignId: string, action: string) {
@@ -97,12 +104,20 @@ export default function CampaignsPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-xl font-bold text-ink">Campañas</h1>
-            <p className="text-[12px] text-ink-muted mt-0.5">Secuencias automatizadas de outreach por WhatsApp</p>
+            <p className="text-[12px] text-ink-muted mt-0.5">Grupos de prospectos que reciben el mismo mensaje por WhatsApp</p>
           </div>
           <Button onClick={openCreateDialog} className="shrink-0 bg-accent hover:bg-accent-hover text-white text-[12px]">
             <Megaphone size={14} /> Nueva campaña
           </Button>
         </div>
+
+        {provider === "assisted" && (
+          <div className="rounded-xl border border-blue/25 bg-blue/5 px-4 py-3 text-[12px] text-ink-muted">
+            Estás en <strong className="text-ink">modo asistido</strong>: las campañas sirven para agrupar prospectos, pero los mensajes se envían
+            uno por uno desde <Link href="/outreach" className="font-medium text-accent hover:underline">Contactar hoy</Link>. Para envío automático
+            activa la API oficial de WhatsApp (ver README).
+          </div>
+        )}
 
         {error && <div className="rounded-xl border border-red/30 bg-red/10 p-4 text-[13px] text-red">{error}</div>}
 
@@ -130,7 +145,7 @@ export default function CampaignsPage() {
           <div className="rounded-xl border border-border/40 bg-card py-16 text-center">
             <Megaphone className="mx-auto mb-4 text-ink-dim/30" size={40} />
             <p className="text-[13px] text-ink-muted">Sin campañas todavía</p>
-            <p className="text-[11px] text-ink-dim mt-1">Crea una desde la ficha de un lead</p>
+            <p className="text-[11px] text-ink-dim mt-1">Crea una con «Nueva campaña» o seleccionando negocios en Leads</p>
           </div>
         )}
 

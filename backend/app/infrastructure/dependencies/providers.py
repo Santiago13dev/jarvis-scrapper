@@ -88,7 +88,20 @@ def get_ai_provider() -> AIProvider:
 
 
 def get_messaging_provider() -> MessagingProvider:
-    return OpenWAAdapter()
+    """Proveedor según WHATSAPP_PROVIDER: assisted (por defecto), cloud_api u openwa."""
+    from app.infrastructure.adapters.messaging.whatsapp_cloud_adapter import (
+        AssistedMessagingAdapter,
+        WhatsAppCloudApiAdapter,
+    )
+
+    from app.infrastructure.config.config import get_settings
+
+    provider = get_settings().whatsapp_provider.lower()
+    if provider == "cloud_api":
+        return WhatsAppCloudApiAdapter()
+    if provider == "openwa":
+        return OpenWAAdapter()
+    return AssistedMessagingAdapter()
 
 
 def get_scraper_provider() -> ScraperProvider:
@@ -118,12 +131,18 @@ def get_event_bus() -> EventBus:
 async def default_knowledge_base_lookup(workspace_id: str) -> str:
     """
     Implementación por defecto de KnowledgeBaseLookup (usada por
-    ProcessIncomingWhatsAppMessageUseCase). Lee la base de conocimiento configurable del
-    workspace desde caché (clave `kb:{workspace_id}`). En el futuro esto debería venir de
-    una tabla `workspace_settings` administrable desde el frontend; por ahora, si no hay
-    nada configurado, devuelve una cadena vacía y el agente IA transferirá a un humano
-    (nunca inventa información, tal como exige el dominio).
+    ProcessIncomingWhatsAppMessageUseCase). Lee la base de conocimiento que el usuario
+    guarda en Configuración (columna `workspaces.knowledge_base`); conserva la clave de
+    caché `kb:{workspace_id}` como respaldo para instalaciones antiguas. Si no hay nada
+    configurado devuelve una cadena vacía y el agente IA transfiere a un humano (nunca
+    inventa información, tal como exige el dominio).
     """
-    cache = get_cache_provider()
-    value = await cache.get(f"kb:{workspace_id}")
+    from app.infrastructure.database.models.workspace import WorkspaceModel
+    from app.infrastructure.database.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        workspace = await session.get(WorkspaceModel, workspace_id)
+        if workspace is not None and workspace.knowledge_base:
+            return workspace.knowledge_base
+    value = await get_cache_provider().get(f"kb:{workspace_id}")
     return value or ""

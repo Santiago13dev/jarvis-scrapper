@@ -24,6 +24,17 @@ POLL_INTERVAL = 3  # seconds between status checks
 MAX_POLL_ATTEMPTS = 120  # ~6 minutes max wait
 
 
+def _first_email(value: str | None) -> str | None:
+    """gosom entrega los correos separados por coma (o vacío si no buscó)."""
+    if not value:
+        return None
+    for candidate in value.replace(";", ",").split(","):
+        candidate = candidate.strip()
+        if "@" in candidate:
+            return candidate.lower()
+    return None
+
+
 class GoogleMapsScraperAdapter(ScraperProvider):
     def __init__(self, base_url: str | None = None) -> None:
         settings = get_settings()
@@ -44,7 +55,7 @@ class GoogleMapsScraperAdapter(ScraperProvider):
             "fast_mode": False,
             "radius": 10000,
             "depth": query.depth,
-            "email": False,
+            "email": query.extract_emails,
             "max_time": 600,
             "proxies": [],
         }
@@ -102,6 +113,7 @@ class GoogleMapsScraperAdapter(ScraperProvider):
                     latitude=float(row["latitude"]) if row.get("latitude") else None,
                     longitude=float(row["longitude"]) if row.get("longitude") else None,
                     raw_source_id=row.get("place_id") or row.get("cid") or None,
+                    email=_first_email(row.get("emails")),
                 )
             )
         return businesses

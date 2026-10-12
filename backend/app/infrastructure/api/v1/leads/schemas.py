@@ -24,6 +24,9 @@ class LeadResponse(BaseModel):
     website: str | None
     email: str | None
     whatsapp: str | None
+    instagram: str | None = None
+    facebook: str | None = None
+    listing_url: str | None = None
     category: str | None
     rating: float | None
     reviews_count: int | None
@@ -35,6 +38,10 @@ class LeadResponse(BaseModel):
     score_calculated_at: datetime | None
     status: str
     owner_user_id: str | None
+    last_contacted_at: datetime | None = None
+    contact_attempts: int = 0
+    latitude: float | None = None
+    longitude: float | None = None
     do_not_contact: bool
     tags: list[str]
     created_at: datetime

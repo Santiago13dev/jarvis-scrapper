@@ -1,720 +1,552 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Globe, Megaphone, Phone, RefreshCw, Search, Sparkles, Trash2, ChevronDown,
-  Star, Download, Mail, MapPin, ExternalLink, X, CalendarClock, Check, Ban,
+  ArrowUpDown, CheckCircle2, Download, Flame, Globe, Loader2, Megaphone, RefreshCw, Search, Send, Sparkles, Users, X,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { ImportPanel } from "@/components/leads/import-panel";
+import { LeadDrawer } from "@/components/leads/lead-drawer";
+import { PresenceBadge, Rating, ScoreBadge, StatusBadge, WhatsAppIcon } from "@/components/leads/lead-badges";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
-import type { Lead, LeadStatus, MessageTemplate, Campaign, FollowUp } from "@/types/api";
-import dynamic from "next/dynamic";
+import { LEAD_STATUSES, cityOf, contactByWhatsApp, downloadLeadsCsv, presenceOf } from "@/lib/leads";
+import { cn } from "@/lib/utils";
+import type { EnrichResult, ImportJob, Lead, LeadStatus, MessageTemplate } from "@/types/api";
 
-const BogotaMapMini = dynamic(
-  () => import("@/components/ui/bogota-map-inner").then((m) => m.BogotaMapInner),
-  { ssr: false }
-);
+type QuickFilter = "high" | "no_web" | "social" | "whatsapp" | "email" | "not_contacted";
+type Sort = "score" | "reviews" | "rating" | "recent";
 
-const LEAD_STATUSES: { value: LeadStatus; label: string }[] = [
-  { value: "new", label: "Nuevo" },
-  { value: "contacted", label: "Contactado" },
-  { value: "replied", label: "Respondido" },
-  { value: "qualified", label: "Calificado" },
-  { value: "demo_sent", label: "Demo enviado" },
-  { value: "won", label: "Ganado" },
-  { value: "lost", label: "Perdido" },
+const QUICK_FILTERS: { id: QuickFilter; label: string }[] = [
+  { id: "high", label: "Potencial alto" },
+  { id: "no_web", label: "Sin página web" },
+  { id: "social", label: "Solo redes" },
+  { id: "whatsapp", label: "Con WhatsApp" },
+  { id: "email", label: "Con correo" },
+  { id: "not_contacted", label: "Sin contactar" },
 ];
 
-function StarRating({ rating, size = 14 }: { rating: number | null; size?: number }) {
-  if (!rating) return <span className="text-[11px] text-ink-dim">—</span>;
-  return (
-    <div className="flex items-center gap-1">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <Star key={i} size={size} className={i <= Math.round(rating) ? "text-amber fill-amber" : "text-border/50"} />
-      ))}
-    </div>
-  );
+const SORTS: { id: Sort; label: string }[] = [
+  { id: "score", label: "Mayor potencial" },
+  { id: "reviews", label: "Más reseñas" },
+  { id: "rating", label: "Mejor calificación" },
+  { id: "recent", label: "Más recientes" },
+];
+
+const PER_PAGE = 25;
+
+function normalize(text: string) {
+  return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
 
 export default function LeadsPage() {
   const { workspaceId, loading } = useActiveWorkspace();
   const [leads, setLeads] = useState<Lead[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [importing, setImporting] = useState(false);
-  const [importModalOpen, setImportModalOpen] = useState(false);
-  const [form, setForm] = useState({ keyword: "restaurantes", location: "Bogotá, Colombia", depth: 2 });
-  const [noWebsiteOnly, setNoWebsiteOnly] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [selectedLead, setSelectedLead] = useState<{id: string; name: string; category: string; phone: string; email: string; website: string; rating: number | null; reviews: number | null; address: string; date: string; status: string} | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [searchQuery, setSearchQuery] = useState("");
-  const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set());
-  const [minRating, setMinRating] = useState<number>(0);
+  const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
+  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<Set<QuickFilter>>(new Set());
+  const [status, setStatus] = useState<LeadStatus | "all">("all");
+  const [sort, setSort] = useState<Sort>("score");
   const [page, setPage] = useState(1);
-  const [campaignModalOpen, setCampaignModalOpen] = useState(false);
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [campaignName, setCampaignName] = useState("");
-  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const [creatingCampaign, setCreatingCampaign] = useState(false);
-  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
-  const perPage = 10;
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [enriching, setEnriching] = useState(false);
+  const [contactingId, setContactingId] = useState<string | null>(null);
+  const [campaignOpen, setCampaignOpen] = useState(false);
 
-  async function loadRecentSearches(wsId: string) {
-    try {
-      const result = await api.get<Array<{ query: string }>>(`/workspaces/${wsId}/leads/search-history`);
-      const items = result.map((item) => item.query).filter(Boolean);
-      setRecentSearches(items);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("jarvisia_recent_searches", JSON.stringify(items));
-      }
-    } catch {
-      const cached = JSON.parse(typeof window !== "undefined" ? window.localStorage.getItem("jarvisia_recent_searches") ?? "[]" : "[]");
-      setRecentSearches(Array.isArray(cached) ? cached : []);
-    }
-  }
-
-  function persistRecentSearch(query: string) {
-    const next = [query, ...recentSearches.filter((item) => item !== query)].slice(0, 5);
-    setRecentSearches(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("jarvisia_recent_searches", JSON.stringify(next));
-    }
-  }
-
-  const loadLeads = useCallback(async (wsId: string, queryOverride?: string) => {
-    try {
-      const params = new URLSearchParams();
-      const query = (queryOverride ?? searchQuery ?? "").trim();
-      if (query) params.set("q", query);
-      if (minRating > 0) params.set("min_rating", String(minRating));
-      if (activeFilters.has("Tiene email")) params.set("with_email", "true");
-      if (activeFilters.has("Tiene teléfono")) params.set("with_phone", "true");
-      if (activeFilters.has("Sin sitio web")) params.set("without_website", "true");
-      const queryString = params.toString();
-      const result = await api.get<Lead[]>(`/workspaces/${wsId}/leads${queryString ? `?${queryString}` : ""}`);
-      setLeads(result);
-    }
-    catch (err) { setError(err instanceof Error ? err.message : "Error al cargar leads"); }
-  }, [activeFilters, minRating, searchQuery]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = JSON.parse(window.localStorage.getItem("jarvisia_recent_searches") ?? "[]") as string[];
-      setRecentSearches(Array.isArray(saved) ? saved : []);
-    }
+  const notify = useCallback((text: string, tone: "ok" | "error" = "ok") => {
+    setNotice({ text, tone });
+    window.setTimeout(() => setNotice((current) => (current?.text === text ? null : current)), 6000);
   }, []);
 
-  useEffect(() => { if (workspaceId) { void loadLeads(workspaceId); void loadRecentSearches(workspaceId); } }, [workspaceId, loadLeads]);
-
-  async function loadFollowUps(wsId: string) {
-    try {
-      const result = await api.get<FollowUp[]>(`/workspaces/${wsId}/follow-ups`);
-      setFollowUps(result.sort((a, b) => new Date(a.next_follow_up_at).getTime() - new Date(b.next_follow_up_at).getTime()));
-    } catch (err) { setError(err instanceof Error ? err.message : "Error al cargar seguimientos"); }
-  }
-
-  useEffect(() => { if (workspaceId) loadFollowUps(workspaceId); }, [workspaceId]);
-
-  async function updateFollowUp(path: string, body?: unknown) {
+  const load = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      await api.patch(`/workspaces/${workspaceId}/follow-ups/${path}`, body);
-      await loadFollowUps(workspaceId);
-    } catch (err) { setError(err instanceof Error ? err.message : "Error al actualizar seguimiento"); }
-  }
-
-  async function rescheduleFollowUp(followUp: FollowUp) {
-    const nextDate = window.prompt("Nueva fecha y hora (ISO)", new Date(followUp.next_follow_up_at).toISOString());
-    if (nextDate) await updateFollowUp(`${followUp.id}/reschedule`, { next_follow_up_at: nextDate });
-  }
-
-  async function handleSearch() {
-    if (!workspaceId) return;
-    const trimmed = searchQuery.trim();
-    if (trimmed) {
-      persistRecentSearch(trimmed);
-      try {
-        await api.post(`/workspaces/${workspaceId}/leads/search-history`, { query: trimmed, filters: { min_rating: minRating, with_email: activeFilters.has("Tiene email"), with_phone: activeFilters.has("Tiene teléfono"), without_website: activeFilters.has("Sin sitio web") } });
-      } catch {}
-    }
-    await loadLeads(workspaceId, trimmed);
-    setPage(1);
-  }
-
-  async function handleImport() {
-    if (!workspaceId) return; setImporting(true); setImportModalOpen(false); setError(null); setSuccessMsg(null);
-    try {
-      await api.post(`/workspaces/${workspaceId}/leads/import`, { keyword: form.keyword, location: form.location, max_results: 500, depth: form.depth });
-      setSuccessMsg("Scrape en progreso... buscando leads en Google Maps");
-      for (let attempt = 0; attempt < 24; attempt++) {
-        await new Promise((r) => setTimeout(r, 5000));
-        const result = await api.get<Lead[]>(`/workspaces/${workspaceId}/leads`);
-        if (result && result.length > 0) { setLeads(result); setSuccessMsg(`Se encontraron ${result.length} leads`); setTimeout(() => setSuccessMsg(null), 5000); break; }
-      }
-    }
-    catch (err) { setError(err instanceof Error ? err.message : "Error al importar"); }
-    finally { setImporting(false); }
-  }
-
-  async function handleDeleteLead(leadId: string) {
-    if (!workspaceId) return; setDeleteConfirmId(null);
-    try { await api.delete(`/workspaces/${workspaceId}/leads/${leadId}`); await loadLeads(workspaceId); setSelectedLead(null); }
-    catch (err) { setError(err instanceof Error ? err.message : "Error al eliminar"); }
-  }
-
-  async function handleStatusChange(leadId: string, newStatus: LeadStatus) {
-    if (!workspaceId) return;
-    try { await api.patch(`/workspaces/${workspaceId}/leads/${leadId}/status`, { status: newStatus }); await loadLeads(workspaceId); }
-    catch (err) { setError(err instanceof Error ? err.message : "Error"); }
-  }
-
-  function toggleSelect(id: string) { setSelectedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
-  function toggleAll() { setSelectedIds(selectedIds.size === displayLeads.length ? new Set() : new Set(displayLeads.map((l) => l.id))); }
-
-  async function loadCampaignsAndTemplates() {
-    if (!workspaceId) return;
-    try {
-      const [c, t] = await Promise.all([
-        api.get<Campaign[]>(`/workspaces/${workspaceId}/campaigns`),
-        api.get<MessageTemplate[]>(`/workspaces/${workspaceId}/templates/messages`),
-      ]);
-      setCampaigns(c);
-      setTemplates(t);
-    } catch {}
-  }
-
-  async function handleAddToCampaign(leadId: string) {
-    if (!workspaceId || !selectedTemplateId) return;
-    setCreatingCampaign(true);
-    try {
-      await api.post(`/workspaces/${workspaceId}/campaigns`, {
-        name: campaignName || `Campaña - ${new Date().toLocaleDateString("es-CO")}`,
-        message_template_id: selectedTemplateId,
-        lead_ids: [leadId],
-      });
-      setCampaignModalOpen(false);
-      setSuccessMsg("Lead agregado a nueva campaña");
-      setTimeout(() => setSuccessMsg(null), 4000);
+      setLeads(await api.get<Lead[]>(`/workspaces/${workspaceId}/leads?limit=5000`));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al crear campaña");
-    } finally {
-      setCreatingCampaign(false);
+      notify(err instanceof Error ? err.message : "No se pudieron cargar los leads.", "error");
     }
-  }
+  }, [workspaceId, notify]);
 
-  async function handleAddSelectedToCampaign() {
-    if (!workspaceId || !selectedTemplateId || selectedIds.size === 0) return;
-    setCreatingCampaign(true);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const onImportFinished = useCallback(
+    (job: ImportJob) => {
+      if (job.status === "done") notify(`Listo: ${job.imported} negocios nuevos de «${job.keyword}».`);
+      else notify(job.error ?? "La búsqueda falló.", "error");
+      void load();
+    },
+    [load, notify],
+  );
+
+  async function enrichAll() {
+    if (!workspaceId) return;
+    setEnriching(true);
     try {
-      await api.post(`/workspaces/${workspaceId}/campaigns`, {
-        name: campaignName || `Campaña - ${new Date().toLocaleDateString("es-CO")}`,
-        message_template_id: selectedTemplateId,
-        lead_ids: Array.from(selectedIds),
-      });
-      setCampaignModalOpen(false);
-      setSelectedIds(new Set());
-      setSuccessMsg(`${selectedIds.size} leads agregados a nueva campaña`);
-      setTimeout(() => setSuccessMsg(null), 4000);
+      const result = await api.post<EnrichResult>(`/workspaces/${workspaceId}/leads/enrich`);
+      notify(
+        `Datos actualizados: ${result.processed} leads, ${result.with_whatsapp} con WhatsApp, ${result.without_website} sin página web` +
+          (result.audits_queued ? `. Revisando ${result.audits_queued} páginas web en segundo plano.` : "."),
+      );
+      await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al crear campaña");
+      notify(err instanceof Error ? err.message : "No se pudieron actualizar los datos.", "error");
     } finally {
-      setCreatingCampaign(false);
+      setEnriching(false);
     }
   }
 
-  async function handleExport() {
-    const XLSX = await import("xlsx");
-    const leadsToExport = selectedIds.size > 0
-      ? displayLeads.filter((l) => selectedIds.has(l.id))
-      : displayLeads;
-    const data = leadsToExport.map((l) => ({
-      Negocio: l.name,
-      Categoría: l.category,
-      Teléfono: l.phone,
-      Email: l.email,
-      "Sitio Web": l.website,
-      Calificación: l.rating ?? "",
-      "N.° Reseñas": l.reviews ?? "",
-      Dirección: l.address,
-      Estado: l.status,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Leads");
-    ws["!cols"] = [
-      { wch: 30 }, { wch: 25 }, { wch: 18 }, { wch: 30 }, { wch: 25 },
-      { wch: 10 }, { wch: 10 }, { wch: 40 }, { wch: 12 },
-    ];
-    XLSX.writeFile(wb, `leads_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    setSuccessMsg(`Exportados ${leadsToExport.length} leads a Excel`);
-    setTimeout(() => setSuccessMsg(null), 4000);
+  async function contact(lead: Lead) {
+    if (!workspaceId) return;
+    setContactingId(lead.id);
+    try {
+      await contactByWhatsApp(workspaceId, lead.id);
+      notify(`WhatsApp abierto para ${lead.name}. Seguimiento agendado en 3 días.`);
+      await load();
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "No se pudo abrir WhatsApp.", "error");
+    } finally {
+      setContactingId(null);
+    }
   }
 
-  const displayLeads = useMemo(() => {
-    const base = (leads ?? []).map((l) => ({
-          id: l.id,
-          name: l.name || "Sin nombre",
-          category: l.category || "General",
-          phone: l.phone || "—",
-          email: l.email || "—",
-          website: l.website || "—",
-          rating: l.rating || null,
-          reviews: l.reviews_count || null,
-          address: l.address || "—",
-          date: new Date(l.created_at).toLocaleDateString("es-CO", { day: "2-digit", month: "short", year: "numeric" }),
-          status: l.status || "new",
-        }));
-    let filtered = base;
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((l) => l.name.toLowerCase().includes(q) || l.category.toLowerCase().includes(q) || l.email.toLowerCase().includes(q));
-    }
-    if (activeFilters.has("Tiene email")) filtered = filtered.filter((l) => l.email && l.email !== "—");
-    if (activeFilters.has("Tiene teléfono")) filtered = filtered.filter((l) => l.phone && l.phone !== "—");
-    if (activeFilters.has("Tiene sitio web")) filtered = filtered.filter((l) => l.website && l.website !== "—");
-    if (activeFilters.has("Sin sitio web")) filtered = filtered.filter((l) => !l.website || l.website === "—");
-    if (minRating > 0) filtered = filtered.filter((l) => l.rating && l.rating >= minRating);
-    return filtered;
-  }, [searchQuery, leads, activeFilters, minRating]);
+  const all = useMemo(() => leads ?? [], [leads]);
 
-  const paginatedLeads = displayLeads.slice((page - 1) * perPage, page * perPage);
-  const totalPages = Math.ceil(displayLeads.length / perPage);
+  const stats = useMemo(() => {
+    const high = all.filter((lead) => (lead.lead_score ?? 0) >= 70).length;
+    const noWeb = all.filter((lead) => !lead.website).length;
+    const whatsapp = all.filter((lead) => lead.whatsapp).length;
+    const contacted = all.filter((lead) => lead.contact_attempts > 0 || lead.status !== "new").length;
+    return { total: all.length, high, noWeb, whatsapp, contacted };
+  }, [all]);
 
-  const isAuthenticated = !!workspaceId;
+  const visible = useMemo(() => {
+    const needle = normalize(query.trim());
+    let list = all.filter((lead) => {
+      if (needle && !normalize(`${lead.name} ${lead.category ?? ""} ${lead.address ?? ""} ${lead.email ?? ""}`).includes(needle)) return false;
+      if (status !== "all" && lead.status !== status) return false;
+      if (filters.has("high") && (lead.lead_score ?? 0) < 70) return false;
+      if (filters.has("no_web") && lead.website) return false;
+      if (filters.has("social") && presenceOf(lead) !== "social") return false;
+      if (filters.has("whatsapp") && !lead.whatsapp) return false;
+      if (filters.has("email") && !lead.email) return false;
+      if (filters.has("not_contacted") && (lead.contact_attempts > 0 || lead.status !== "new")) return false;
+      return true;
+    });
+    list = [...list].sort((a, b) => {
+      if (sort === "reviews") return (b.reviews_count ?? 0) - (a.reviews_count ?? 0);
+      if (sort === "rating") return (b.rating ?? 0) - (a.rating ?? 0);
+      if (sort === "recent") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return (b.lead_score ?? -1) - (a.lead_score ?? -1) || (b.reviews_count ?? 0) - (a.reviews_count ?? 0);
+    });
+    return list;
+  }, [all, query, status, filters, sort]);
+
+  useEffect(() => setPage(1), [query, status, filters, sort]);
+
+  const pages = Math.max(1, Math.ceil(visible.length / PER_PAGE));
+  const pageItems = visible.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const openLead = all.find((lead) => lead.id === openLeadId) ?? null;
+  const allOnPageSelected = pageItems.length > 0 && pageItems.every((lead) => selected.has(lead.id));
+
+  function toggleFilter(id: QuickFilter) {
+    setFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelected(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exportCsv() {
+    const rows = selected.size ? visible.filter((lead) => selected.has(lead.id)) : visible;
+    downloadLeadsCsv(rows);
+    notify(`Exportados ${rows.length} leads a CSV (se abre en Excel o Google Sheets).`);
+  }
 
   return (
     <AppShell>
       <div className="space-y-5">
-        {/* Error Banner */}
-        {error && (
-          <div className="rounded-xl border border-red/30 bg-red/10 px-4 py-3 flex items-center justify-between">
-            <span className="text-[12px] text-red font-medium">{error}</span>
-            <button onClick={() => setError(null)} className="text-red hover:text-red/80 transition-colors"><X size={14} /></button>
-          </div>
-        )}
-
-        {successMsg && (
-          <div className="rounded-xl border border-teal/30 bg-teal/10 px-4 py-3 flex items-center justify-between">
-            <span className="text-[12px] text-teal font-medium">{successMsg}</span>
-            <button onClick={() => setSuccessMsg(null)} className="text-teal hover:text-teal/80 transition-colors"><X size={14} /></button>
-          </div>
-        )}
-
-        {/* Not authenticated banner */}
-        {!loading && !isAuthenticated && (
-          <div className="rounded-xl border border-amber/30 bg-amber/10 px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-[12px] text-amber font-medium">No estás autenticado. Iniciá sesión para importar leads y guardar datos.</span>
-            </div>
-            <a href="/login" className="rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors">Iniciar sesión</a>
-          </div>
-        )}
-
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        {/* Encabezado y acciones */}
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="font-display text-xl font-bold text-ink">Leads</h1>
-            <p className="text-[12px] text-ink-muted mt-0.5">Gestiona y explora todos los leads extraídos de Google Maps</p>
+            <h1 className="font-display text-2xl font-bold text-ink">Leads</h1>
+            <p className="mt-0.5 text-[13px] text-ink-muted">Negocios encontrados en Google Maps, ordenados por su potencial de venta.</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-2">
-              <Search size={14} className="text-ink-dim" />
-              <input type="text" placeholder="Buscar leads, negocios, categorías..." value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} onKeyDown={(e) => { if (e.key === "Enter") { void handleSearch(); } }}
-                className="bg-transparent text-[12px] text-ink placeholder:text-ink-dim outline-none w-56" />
-              <button type="button" onClick={() => void handleSearch()} className="text-[10px] text-ink-dim border border-border/30 rounded px-1.5 py-0.5 hover:text-ink">Buscar</button>
-            </div>
-            <button onClick={() => { if (!isAuthenticated) { setError("Iniciá sesión para importar leads desde Google Maps"); return; } setImportModalOpen(true); }} disabled={importing}
-              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors disabled:opacity-50">
-              {importing ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
-              {importing ? "Importando..." : "Importar desde Google Maps"}
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="h-8 w-8 rounded-full bg-accent/20 border border-accent/30 flex items-center justify-center text-[11px] font-bold text-accent">SR</span>
-            </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <Button variant="secondary" onClick={() => void enrichAll()} disabled={!workspaceId || enriching} title="Completa WhatsApp/redes y recalcula el potencial">
+              {enriching ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Actualizar datos
+            </Button>
+            <Link href="/outreach" className="hidden items-center gap-2 rounded-lg border border-[#25D366]/40 sm:inline-flex bg-[#25D366]/10 px-4 py-2 text-[13px] font-medium text-[#25D366] hover:bg-[#25D366]/20">
+              <Send size={14} /> Contactar hoy
+            </Link>
+            <Button onClick={() => setImportOpen(true)} disabled={!workspaceId}>
+              <Search size={14} /> Buscar negocios
+            </Button>
           </div>
         </div>
 
-        {/* Stat Cards */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {(() => {
-            const allLeads = leads ?? [];
-            const withEmail = allLeads.filter((l) => l.email && l.email !== "—");
-            const withPhone = allLeads.filter((l) => l.phone && l.phone !== "—");
-            const withWeb = allLeads.filter((l) => l.website && l.website !== "—");
-            const stats = [
-              { label: "Contactos", value: allLeads.length.toLocaleString(), icon: UsersIcon, color: "bg-accent/15 text-accent" },
-              { label: "Con correo", value: withEmail.length.toLocaleString(), icon: Mail, color: "bg-blue/15 text-blue" },
-              { label: "Con teléfono", value: withPhone.length.toLocaleString(), icon: Phone, color: "bg-teal/15 text-teal" },
-              { label: "Con sitio web", value: withWeb.length.toLocaleString(), icon: Globe, color: "bg-amber/15 text-amber" },
-              { label: "Con dirección", value: allLeads.filter((l) => l.address && l.address !== "—").length.toLocaleString(), icon: MapPin, color: "bg-pink/15 text-pink" },
-            ];
-            return stats.map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <div key={stat.label} className="rounded-xl border border-border/40 bg-card p-4 transition-all hover:border-accent/20">
-                  <div className="flex items-start justify-between">
-                    <div className={`rounded-lg p-2 ${stat.color}`}><Icon size={15} /></div>
-                    <span className="text-[10px] text-ink-dim">En tu base</span>
-                  </div>
-                  <p className="text-lg font-bold text-ink font-mono-data mt-2">{stat.value}</p>
-                  <p className="text-[10px] text-ink-dim mt-0.5">{stat.label}</p>
-                  <p className="text-[9px] text-ink-dim/60 mt-0.5">vs. último mes</p>
-                </div>
-              );
-            });
-          })()}
-        </div>
-
-        {/* Filter bar */}
-        <div className="rounded-lg border border-border/40 bg-card p-4">
-          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <span className="h-2 w-2 rounded-full bg-accent" />
-              <span className="text-[13px] font-medium text-ink">Base de contactos</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-teal/15 px-2 py-0.5 text-[9px] font-semibold text-teal uppercase tracking-wider">
-                <span className="h-1 w-1 rounded-full bg-teal" /> Datos del workspace
-              </span>
-              <span className="text-[12px] text-ink-muted">{(leads?.length || 0).toLocaleString()} contactos</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={() => workspaceId && Promise.all([loadLeads(workspaceId), loadFollowUps(workspaceId)])} title="Actualizar datos" className="rounded-lg border border-border/50 bg-input p-2 text-ink-muted hover:text-ink transition-colors"><RefreshCw size={14} /></button>
-              <button onClick={handleExport} className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[12px] font-medium text-white hover:bg-accent-hover transition-colors">
-                <Download size={13} /> Exportar
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {recentSearches.length > 0 && (
-              <div className="flex items-center gap-2 pr-2 border-r border-border/30 mr-1">
-                {recentSearches.map((term) => (
-                  <button key={term} onClick={() => { setSearchQuery(term); void loadLeads(workspaceId!, term); }} className="rounded-full border border-border/40 bg-input px-2 py-1 text-[10px] text-ink-muted hover:text-ink hover:border-border">
-                    {term}
-                  </button>
-                ))}
-              </div>
+        {notice && (
+          <div
+            role="status"
+            className={cn(
+              "flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-[13px]",
+              notice.tone === "ok" ? "border-teal/30 bg-teal/10 text-teal" : "border-red/30 bg-red/10 text-red",
             )}
-            {["Tiene email", "Tiene teléfono", "Tiene sitio web", "Sin sitio web"].map((f) => (
-              <button key={f} onClick={() => { setPage(1); setActiveFilters((prev) => { const n = new Set(prev); n.has(f) ? n.delete(f) : n.add(f); return n; }); void loadLeads(workspaceId!, searchQuery); }}
-                className={`rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors ${activeFilters.has(f) ? "border-accent/40 bg-accent/10 text-accent" : "border-border/40 bg-input text-ink-muted hover:text-ink hover:border-border"}`}>
-                {f}
+          >
+            <span className="flex items-center gap-2">{notice.tone === "ok" && <CheckCircle2 size={15} />} {notice.text}</span>
+            <button onClick={() => setNotice(null)} aria-label="Cerrar aviso"><X size={14} /></button>
+          </div>
+        )}
+
+        {workspaceId && (
+          <ImportPanel workspaceId={workspaceId} open={importOpen} onOpenChange={setImportOpen} onFinished={onImportFinished} />
+        )}
+
+        {/* Indicadores */}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Stat icon={<Users size={15} />} tone="bg-accent/15 text-accent" value={stats.total} label="Leads" />
+          <Stat icon={<Flame size={15} />} tone="bg-teal/15 text-teal" value={stats.high} label="Potencial alto" onClick={() => toggleFilter("high")} active={filters.has("high")} />
+          <Stat icon={<Globe size={15} />} tone="bg-amber/15 text-amber" value={stats.noWeb} label="Sin página web" onClick={() => toggleFilter("no_web")} active={filters.has("no_web")} />
+          <Stat icon={<WhatsAppIcon size={15} />} tone="bg-[#25D366]/15 text-[#25D366]" value={stats.whatsapp} label="Con WhatsApp" onClick={() => toggleFilter("whatsapp")} active={filters.has("whatsapp")} />
+          <Stat icon={<Send size={15} />} tone="bg-blue/15 text-blue" value={stats.contacted} label="Contactados" className="col-span-2 lg:col-span-1" />
+        </div>
+
+        {/* Búsqueda y filtros */}
+        <div className="space-y-3 rounded-xl border border-border/40 bg-card p-4">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="flex flex-1 items-center gap-2 rounded-lg border border-border/50 bg-input px-3 focus-within:border-accent/50">
+              <Search size={14} className="text-ink-dim" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar por nombre, categoría, barrio o correo"
+                className="w-full bg-transparent py-2 text-[13px] text-ink outline-none placeholder:text-ink-dim"
+              />
+              {query && <button onClick={() => setQuery("")} aria-label="Limpiar búsqueda"><X size={13} className="text-ink-dim" /></button>}
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as LeadStatus | "all")}
+                className="min-w-0 flex-1 rounded-lg border border-border/50 bg-input px-3 py-2 text-[13px] text-ink outline-none sm:flex-none"
+                aria-label="Filtrar por estado"
+              >
+                <option value="all">Todos los estados</option>
+                {LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+              <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/50 bg-input px-3 sm:flex-none">
+                <ArrowUpDown size={13} className="shrink-0 text-ink-dim" />
+                <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="min-w-0 bg-transparent py-2 text-[13px] text-ink outline-none" aria-label="Ordenar">
+                  {SORTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                </select>
+              </label>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {QUICK_FILTERS.map((filter) => (
+              <button
+                key={filter.id}
+                onClick={() => toggleFilter(filter.id)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors",
+                  filters.has(filter.id) ? "border-accent/50 bg-accent/15 text-accent" : "border-border/40 bg-input text-ink-muted hover:border-border hover:text-ink",
+                )}
+              >
+                {filter.label}
               </button>
             ))}
-            <span className="w-px h-4 bg-border/30" />
-            <div className="flex items-center gap-1">
-              <span className="text-[10px] text-ink-dim mr-1">Mín.</span>
-              {[0, 3, 3.5, 4, 4.5].map((r) => (
-                <button key={r} onClick={() => { setMinRating(r); setPage(1); }}
-                  className={`flex items-center gap-0.5 rounded-md px-2 py-1 text-[10px] font-medium transition-colors ${minRating === r ? "bg-accent/10 text-accent border border-accent/30" : "text-ink-dim hover:text-ink border border-transparent"}`}>
-                  {r === 0 ? "Todas" : <><Star size={10} className="text-amber fill-amber" />{r}+</>}
-                </button>
-              ))}
-            </div>
-            {(activeFilters.size > 0 || minRating > 0) && (
-              <button onClick={() => { setActiveFilters(new Set()); setMinRating(0); setPage(1); }} className="text-[11px] text-red font-medium hover:text-red/80 transition-colors">Borrar filtros</button>
+            {(filters.size > 0 || status !== "all" || query) && (
+              <button onClick={() => { setFilters(new Set()); setStatus("all"); setQuery(""); }} className="text-[12px] font-medium text-red hover:text-red/80">
+                Quitar filtros
+              </button>
             )}
+            <span className="ml-auto text-[12px] text-ink-dim">{visible.length.toLocaleString("es-CO")} de {stats.total.toLocaleString("es-CO")}</span>
           </div>
-          {selectedIds.size > 0 && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2.5">
-              <span className="text-[12px] font-medium text-accent">{selectedIds.size} negocios seleccionados</span>
-              <Button onClick={() => { setSelectedLead(null); loadCampaignsAndTemplates(); setCampaignModalOpen(true); }} className="bg-accent hover:bg-accent-hover text-white text-[12px]">
-                <Megaphone size={13} /> Crear campaña
-              </Button>
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2">
+              <span className="mr-auto text-[12px] font-medium text-accent">{selected.size} seleccionados</span>
+              <Button variant="secondary" onClick={exportCsv}><Download size={13} /> Exportar</Button>
+              <Button onClick={() => setCampaignOpen(true)}><Megaphone size={13} /> Crear campaña</Button>
+              <button onClick={() => setSelected(new Set())} className="text-[12px] text-ink-dim hover:text-ink">Quitar selección</button>
             </div>
           )}
         </div>
 
-        <section className="rounded-lg border border-border/40 bg-card p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CalendarClock size={15} className="text-accent" />
-              <h2 className="text-[13px] font-semibold text-ink">Seguimientos pendientes</h2>
-              <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] text-accent">{followUps.length}</span>
-            </div>
-            <span className="text-[10px] text-ink-dim">Ordenados por próxima fecha</span>
+        {/* Listado */}
+        {leads === null || loading ? (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-border/40 bg-card py-16 text-[13px] text-ink-muted">
+            <Loader2 size={16} className="animate-spin" /> Cargando leads…
           </div>
-          {followUps.length === 0 ? (
-            <p className="py-3 text-[11px] text-ink-dim">No hay seguimientos pendientes.</p>
-          ) : (
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-              {followUps.map((followUp) => {
-                const lead = leads?.find((item) => item.id === followUp.lead_id);
-                return (
-                  <div key={followUp.id} className="flex items-center justify-between gap-3 rounded-lg border border-border/30 bg-input px-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate text-[12px] font-medium text-ink">{lead?.name ?? followUp.lead_id}</p>
-                      <p className={`text-[10px] ${followUp.status === "due" ? "text-amber" : "text-ink-muted"}`}>
-                        {followUp.status === "due" ? "Vencido · " : "Programado · "}
-                        {new Date(followUp.next_follow_up_at).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button title="Completar" onClick={() => updateFollowUp(`${followUp.id}/complete`)} className="rounded-md p-1.5 text-teal hover:bg-teal/10"><Check size={14} /></button>
-                      <button title="Reprogramar" onClick={() => rescheduleFollowUp(followUp)} className="rounded-md p-1.5 text-accent hover:bg-accent/10"><CalendarClock size={14} /></button>
-                      <button title="Cancelar" onClick={() => updateFollowUp(`${followUp.id}/cancel`, { reason: "cancelled_by_user" })} className="rounded-md p-1.5 text-red hover:bg-red/10"><Ban size={14} /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* Main content: Table + Detail Panel */}
-        <div className="flex flex-col gap-4 xl:flex-row">
-          {/* Table */}
-          <div className="min-w-0 flex-1 overflow-hidden rounded-lg border border-border/40 bg-card">
-            <div className="overflow-x-auto">
-            <table className="min-w-[1050px] w-full text-left text-[12px]">
-              <thead>
-                <tr className="border-b border-border/30 text-[10px] uppercase tracking-wider text-ink-dim">
-                  <th className="px-4 py-3 font-medium w-8">
-                    <input type="checkbox" checked={selectedIds.size === paginatedLeads.length && paginatedLeads.length > 0} onChange={toggleAll} className="rounded border-border accent-[#825aff]" />
-                  </th>
-                  <th className="px-3 py-3 font-medium min-w-[160px]">Negocio</th>
-                  <th className="px-3 py-3 font-medium min-w-[140px]">Categoría</th>
-                  <th className="px-3 py-3 font-medium min-w-[120px]">Teléfono</th>
-                  <th className="px-3 py-3 font-medium min-w-[140px]">Email</th>
-                  <th className="px-3 py-3 font-medium min-w-[140px]">Sitio Web</th>
-                  <th className="px-3 py-3 font-medium min-w-[100px]">Calificación</th>
-                  <th className="px-3 py-3 font-medium min-w-[160px]">Dirección</th>
-                  <th className="px-3 py-3 font-medium whitespace-nowrap">Fecha extraída</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedLeads.map((lead) => (
-                  <tr key={lead.id}
-                    onClick={() => setSelectedLead(lead)}
-                    className={`border-b border-border/20 hover:bg-card-hover transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-accent/5 border-l-2 border-l-accent" : ""}`}>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={selectedIds.has(lead.id)} onChange={() => toggleSelect(lead.id)} className="rounded border-border accent-[#825aff]" />
-                    </td>
-                    <td className="px-3 py-3">
-                      <p className="font-medium text-ink whitespace-nowrap">{lead.name}</p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className="rounded-md bg-border/20 px-2 py-0.5 text-[11px] text-ink-muted">{lead.category}</span>
-                    </td>
-                    <td className="px-3 py-3">
-                      {lead.phone && lead.phone !== "—" ? (
-                        <span className="flex items-center gap-1 font-mono text-[11px] text-ink-muted"><Phone size={10} /> {lead.phone}</span>
-                      ) : <span className="text-ink-dim text-[11px]">—</span>}
-                    </td>
-                    <td className="px-3 py-3 text-[11px]">
-                      {lead.email && lead.email !== "—" ? <span className="text-accent">{lead.email}</span> : <span className="text-ink-dim">—</span>}
-                    </td>
-                    <td className="px-3 py-3">
-                      {lead.website && lead.website !== "—" ? (
-                        <span className="flex items-center gap-1 text-accent text-[11px]"><Globe size={10} /> {lead.website}</span>
-                      ) : <span className="text-ink-dim text-[11px]">—</span>}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {lead.rating ? <span className="text-ink font-medium text-[11px]">{lead.rating}</span> : null}
-                        <StarRating rating={lead.rating} size={11} />
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-ink-dim text-[11px] max-w-[140px] truncate">{lead.address}</td>
-                    <td className="px-3 py-3 text-ink-dim text-[11px] whitespace-nowrap">{lead.date}</td>
+        ) : all.length === 0 ? (
+          <EmptyState onSearch={() => setImportOpen(true)} />
+        ) : visible.length === 0 ? (
+          <div className="rounded-xl border border-border/40 bg-card py-12 text-center text-[13px] text-ink-muted">Ningún lead coincide con los filtros.</div>
+        ) : (
+          <div className="overflow-hidden rounded-xl border border-border/40 bg-card">
+            {/* Computador: tabla */}
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full text-left text-[13px]">
+                <thead>
+                  <tr className="border-b border-border/30 text-[11px] uppercase tracking-wider text-ink-dim">
+                    <th className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label="Seleccionar página"
+                        checked={allOnPageSelected}
+                        onChange={() => setSelected((prev) => {
+                          const next = new Set(prev);
+                          pageItems.forEach((lead) => (allOnPageSelected ? next.delete(lead.id) : next.add(lead.id)));
+                          return next;
+                        })}
+                        className="accent-[#825aff]"
+                      />
+                    </th>
+                    <th className="px-2 py-3 font-semibold">Potencial</th>
+                    <th className="px-3 py-3 font-semibold">Negocio</th>
+                    <th className="px-3 py-3 font-semibold">Presencia digital</th>
+                    <th className="px-3 py-3 font-semibold">Reseñas</th>
+                    <th className="px-3 py-3 font-semibold">Estado</th>
+                    <th className="px-4 py-3 text-right font-semibold">Contacto</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {pageItems.map((lead) => (
+                    <tr key={lead.id} onClick={() => setOpenLeadId(lead.id)} className="cursor-pointer border-b border-border/20 transition-colors hover:bg-card-hover">
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" aria-label={`Seleccionar ${lead.name}`} checked={selected.has(lead.id)} onChange={() => toggleSelected(lead.id)} className="accent-[#825aff]" />
+                      </td>
+                      <td className="px-2 py-3"><ScoreBadge score={lead.lead_score} /></td>
+                      <td className="max-w-[320px] px-3 py-3">
+                        <p className="truncate font-semibold text-ink">{lead.name}</p>
+                        <p className="truncate text-[12px] text-ink-dim">{[lead.category, cityOf(lead.address)].filter(Boolean).join(" · ")}</p>
+                      </td>
+                      <td className="px-3 py-3"><PresenceBadge lead={lead} /></td>
+                      <td className="px-3 py-3"><Rating rating={lead.rating} reviews={lead.reviews_count} /></td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-col items-start gap-1">
+                          <StatusBadge status={lead.status} />
+                          {lead.do_not_contact && <span className="text-[10px] font-semibold text-red">No contactar</span>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                        <ContactButton lead={lead} busy={contactingId === lead.id} onContact={() => void contact(lead)} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-            {/* Pagination */}
-            <div className="flex flex-col gap-2 border-t border-border/20 bg-card/50 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between">
-              <span className="text-[11px] text-ink-dim">Mostrando {((page - 1) * perPage) + 1} a {Math.min(page * perPage, displayLeads.length)} de {displayLeads.length} leads</span>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <button key={p} onClick={() => setPage(p)}
-                    className={`h-6 min-w-[24px] rounded px-1.5 text-[10px] font-medium transition-colors ${p === page ? "bg-accent text-white" : "text-ink-dim hover:text-ink hover:bg-card-hover"}`}>{p}</button>
-                ))}
+
+            {/* Celular: tarjetas */}
+            <ul className="divide-y divide-border/20 md:hidden">
+              {pageItems.map((lead) => (
+                <li key={lead.id} onClick={() => setOpenLeadId(lead.id)} className="flex items-start gap-3 px-4 py-3 active:bg-card-hover">
+                  <ScoreBadge score={lead.lead_score} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-ink">{lead.name}</p>
+                    <p className="truncate text-[12px] text-ink-dim">{[lead.category, cityOf(lead.address)].filter(Boolean).join(" · ")}</p>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <PresenceBadge lead={lead} />
+                      <StatusBadge status={lead.status} />
+                      <Rating rating={lead.rating} reviews={lead.reviews_count} />
+                    </div>
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <ContactButton lead={lead} busy={contactingId === lead.id} onContact={() => void contact(lead)} compact />
+                  </div>
+                </li>
+              ))}
+            </ul>
+
+            {/* Paginación */}
+            <div className="flex flex-col items-center justify-between gap-2 border-t border-border/20 px-4 py-3 sm:flex-row">
+              <span className="text-[12px] text-ink-dim">
+                {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, visible.length)} de {visible.length.toLocaleString("es-CO")}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
+                <span className="text-[12px] text-ink-muted">Página {page} de {pages}</span>
+                <Button variant="secondary" disabled={page === pages} onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
               </div>
-              <span className="text-[10px] text-ink-dim">10 por página</span>
+              <Button variant="ghost" onClick={exportCsv}><Download size={13} /> Exportar {selected.size ? "selección" : "lista"}</Button>
             </div>
           </div>
-
-          {/* Detail Panel */}
-          {selectedLead && (
-            <div className="w-full shrink-0 overflow-hidden rounded-lg border border-border/40 bg-card xl:w-[340px]">
-              <div className="p-5">
-                {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-accent/15 border border-accent/20 flex items-center justify-center">
-                      <span className="font-bold text-accent text-sm">{selectedLead.name[0]}</span>
-                    </div>
-                    <div>
-                      <h3 className="font-display text-[15px] font-bold text-ink">{selectedLead.name}</h3>
-                      <p className="text-[11px] text-ink-muted">{selectedLead.category}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {selectedLead.website !== "—" && <button onClick={() => window.open(selectedLead.website.startsWith("http") ? selectedLead.website : `https://${selectedLead.website}`, "_blank", "noopener,noreferrer")} title="Abrir sitio web" className="rounded-md p-1.5 text-ink-dim hover:text-ink hover:bg-white/5 transition-colors"><ExternalLink size={13} /></button>}
-                    <button onClick={() => setSelectedLead(null)} className="rounded-md p-1.5 text-ink-dim hover:text-ink hover:bg-white/5 transition-colors"><X size={13} /></button>
-                  </div>
-                </div>
-
-                {/* Rating */}
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="text-lg font-bold text-ink">{selectedLead.rating}</span>
-                  <StarRating rating={selectedLead.rating} size={14} />
-                  <span className="text-[11px] text-ink-muted">({selectedLead.reviews} reseñas)</span>
-                </div>
-
-                {/* Contact */}
-                <div className="space-y-2.5 mb-4">
-                  <div className="flex items-center gap-2.5">
-                    <Phone size={13} className="text-ink-dim shrink-0" />
-                    <span className="text-[12px] text-ink font-mono">{selectedLead.phone}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Mail size={13} className="text-ink-dim shrink-0" />
-                    <span className="text-[12px] text-accent">{selectedLead.email}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    <Globe size={13} className="text-ink-dim shrink-0" />
-                    <span className="text-[12px] text-accent">{selectedLead.website}</span>
-                  </div>
-                  <div className="flex items-start gap-2.5">
-                    <MapPin size={13} className="text-ink-dim shrink-0 mt-0.5" />
-                    <span className="text-[12px] text-ink-muted">{selectedLead.address}</span>
-                  </div>
-                </div>
-
-                {/* Map mini */}
-                <div className="rounded-lg overflow-hidden border border-border/30 mb-4 h-[120px]">
-                  <BogotaMapMini />
-                </div>
-
-                {/* Details grid */}
-                <div className="space-y-2.5 mb-4 text-[12px]">
-                  <div className="flex justify-between">
-                    <span className="text-ink-dim">Categoría</span>
-                    <span className="text-ink font-medium">{selectedLead.category}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink-dim">Fuente</span>
-                    <span className="text-ink font-medium">Google Maps</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-ink-dim">Fecha de extracción</span>
-                    <span className="text-ink font-medium">{selectedLead.date}</span>
-                  </div>
-                </div>
-
-                {/* Campaign tags */}
-                <div className="mb-4">
-                  <p className="text-[10px] text-ink-dim uppercase tracking-wider mb-2">Etiquetas</p>
-                  <p className="text-[12px] text-ink-dim">No hay etiquetas guardadas para este contacto.</p>
-                </div>
-
-                {/* Notes */}
-                <div className="mb-4">
-                  <p className="text-[10px] text-ink-dim uppercase tracking-wider mb-1.5">Notas</p>
-                  <p className="text-[12px] text-ink-dim">No hay notas guardadas para este contacto.</p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-2">
-                  <Button onClick={() => { loadCampaignsAndTemplates(); setCampaignModalOpen(true); }} className="flex-1 bg-accent hover:bg-accent-hover text-white text-[12px]"><Megaphone size={13} /> Agregar a campaña</Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-border/40 bg-card p-4 text-[12px] text-ink-muted">
-          Las métricas y contactos de esta pantalla corresponden únicamente al workspace activo.
-        </div>
+        )}
       </div>
 
-      {/* Modals */}
-      <Dialog open={!!deleteConfirmId} onClose={() => setDeleteConfirmId(null)}>
-        <DialogTitle>Eliminar lead</DialogTitle>
-        <DialogDescription>¿Seguro que querés eliminar este lead?</DialogDescription>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
-          <Button variant="danger" onClick={() => deleteConfirmId && handleDeleteLead(deleteConfirmId)}><Trash2 size={14} /> Eliminar</Button>
-        </div>
-      </Dialog>
+      {workspaceId && (
+        <LeadDrawer
+          lead={openLead}
+          workspaceId={workspaceId}
+          onClose={() => setOpenLeadId(null)}
+          onChanged={() => void load()}
+          onNotify={notify}
+        />
+      )}
 
-      <Dialog open={importModalOpen} onClose={() => setImportModalOpen(false)}>
-        <DialogTitle>Importar leads desde Google Maps</DialogTitle>
-        <DialogDescription>Configurá los parámetros de búsqueda.</DialogDescription>
-        <div className="mt-5 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Qué buscar</label>
-            <input type="text" value={form.keyword} onChange={(e) => setForm({ ...form, keyword: e.target.value })}
-              className="w-full rounded-lg border border-border/50 bg-input px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-dim focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-colors" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Ubicación</label>
-            <input type="text" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })}
-              className="w-full rounded-lg border border-border/50 bg-input px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-dim focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-colors" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Profundidad</label>
-            <div className="flex items-center gap-3">
-              {[1, 2, 3].map((d) => (
-                <button key={d} onClick={() => setForm({ ...form, depth: d })}
-                  className={`flex h-9 w-9 items-center justify-center rounded-lg border text-[13px] font-medium transition-all ${form.depth === d ? "border-accent/40 bg-accent/10 text-accent" : "border-border/50 bg-input text-ink-muted hover:text-ink"}`}>{d}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setImportModalOpen(false)}>Cancelar</Button>
-          <Button onClick={handleImport} disabled={importing} className="bg-accent hover:bg-accent-hover text-white">
-            {importing ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-            {importing ? "Importando..." : "Buscar"}
-          </Button>
-        </div>
-      </Dialog>
-
-      <Dialog open={campaignModalOpen} onClose={() => setCampaignModalOpen(false)}>
-        <DialogTitle>Agregar a campaña</DialogTitle>
-        <DialogDescription>Crea una nueva campaña con {selectedLead ? `el lead "${selectedLead.name}"` : `${selectedIds.size} leads seleccionados`}.</DialogDescription>
-        <div className="mt-5 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Nombre de la campaña</label>
-            <input type="text" value={campaignName} onChange={(e) => setCampaignName(e.target.value)}
-              placeholder={`Campaña - ${new Date().toLocaleDateString("es-CO")}`}
-              className="w-full rounded-lg border border-border/50 bg-input px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-dim focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-colors" />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Plantilla de mensaje</label>
-            {templates.length > 0 ? (
-              <div className="space-y-2">
-                {templates.map((t) => (
-                  <button key={t.id} onClick={() => setSelectedTemplateId(t.id)}
-                    className={`w-full text-left rounded-lg border p-3 transition-colors ${selectedTemplateId === t.id ? "border-accent/40 bg-accent/10" : "border-border/40 bg-input hover:border-border"}`}>
-                    <p className="text-[12px] font-medium text-ink">{t.name}</p>
-                    <p className="text-[11px] text-ink-dim mt-0.5 truncate">{t.content}</p>
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[12px] text-ink-dim">No hay plantillas creadas. Creá una en <a href="/templates" className="text-accent hover:underline">Plantillas</a>.</p>
-            )}
-          </div>
-        </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setCampaignModalOpen(false)}>Cancelar</Button>
-          <Button onClick={() => selectedLead ? handleAddToCampaign(selectedLead.id) : handleAddSelectedToCampaign()}
-            disabled={creatingCampaign || !selectedTemplateId} className="bg-accent hover:bg-accent-hover text-white">
-            {creatingCampaign ? <RefreshCw size={14} className="animate-spin" /> : <Megaphone size={14} />}
-            {creatingCampaign ? "Creando..." : "Crear campaña"}
-          </Button>
-        </div>
-      </Dialog>
+      {workspaceId && (
+        <CampaignDialog
+          open={campaignOpen}
+          onClose={() => setCampaignOpen(false)}
+          workspaceId={workspaceId}
+          leadIds={[...selected]}
+          onCreated={(count) => {
+            setSelected(new Set());
+            notify(`Campaña creada con ${count} leads. Revísala en Campañas.`);
+          }}
+        />
+      )}
     </AppShell>
   );
 }
 
-function UsersIcon(props: any) { return <svg xmlns="http://www.w3.org/2000/svg" width={props.size||24} height={props.size||24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={props.className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>; }
+function Stat({
+  icon, tone, value, label, onClick, active, className,
+}: { icon: React.ReactNode; tone: string; value: number; label: string; onClick?: () => void; active?: boolean; className?: string }) {
+  const Tag = onClick ? "button" : "div";
+  return (
+    <Tag
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors sm:block sm:p-4",
+        active ? "border-accent/50" : "border-border/40",
+        onClick && "hover:border-accent/30",
+        className,
+      )}
+    >
+      <span className={cn("inline-flex shrink-0 rounded-lg p-2", tone)}>{icon}</span>
+      <span className="block min-w-0">
+        <span className="block font-mono text-lg font-bold text-ink sm:mt-2 sm:text-xl">{value.toLocaleString("es-CO")}</span>
+        <span className="block truncate text-[12px] text-ink-muted">{label}</span>
+      </span>
+    </Tag>
+  );
+}
+
+function ContactButton({ lead, busy, onContact, compact }: { lead: Lead; busy: boolean; onContact: () => void; compact?: boolean }) {
+  if (lead.do_not_contact) return <span className="text-[11px] text-ink-dim">—</span>;
+  if (!lead.whatsapp) {
+    return lead.phone ? (
+      <a href={`tel:${lead.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-1 rounded-lg border border-border/50 px-2.5 py-1.5 text-[12px] text-ink-muted hover:text-ink">
+        Llamar
+      </a>
+    ) : (
+      <span className="text-[11px] text-ink-dim">Sin teléfono</span>
+    );
+  }
+  return (
+    <button
+      onClick={onContact}
+      disabled={busy}
+      title="Abrir WhatsApp con el mensaje listo"
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] font-semibold text-[#06210f] transition-colors hover:bg-[#2ee26f] disabled:opacity-50",
+        compact ? "p-2.5" : "px-3 py-1.5 text-[12px]",
+      )}
+    >
+      {busy ? <Loader2 size={14} className="animate-spin" /> : <WhatsAppIcon size={14} />}
+      {!compact && (lead.contact_attempts > 0 ? "Seguimiento" : "Escribir")}
+    </button>
+  );
+}
+
+function EmptyState({ onSearch }: { onSearch: () => void }) {
+  return (
+    <div className="rounded-xl border border-dashed border-border/60 bg-card px-6 py-14 text-center">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent/15 text-accent"><Search size={20} /></div>
+      <h2 className="mt-4 font-display text-lg font-bold text-ink">Encuentra tus primeros clientes</h2>
+      <p className="mx-auto mt-1 max-w-md text-[13px] text-ink-muted">
+        Busca un tipo de negocio y una zona. Jarvis los trae de Google Maps, detecta cuáles no tienen página web y los ordena por potencial de venta.
+      </p>
+      <Button className="mt-5" onClick={onSearch}><Search size={14} /> Buscar negocios</Button>
+    </div>
+  );
+}
+
+function CampaignDialog({
+  open, onClose, workspaceId, leadIds, onCreated,
+}: { open: boolean; onClose: () => void; workspaceId: string; leadIds: string[]; onCreated: (count: number) => void }) {
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    api.get<MessageTemplate[]>(`/workspaces/${workspaceId}/templates/messages`).then(setTemplates).catch(() => setTemplates([]));
+  }, [open, workspaceId]);
+
+  async function create() {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.post(`/workspaces/${workspaceId}/campaigns`, {
+        name: name.trim() || `Campaña ${new Date().toLocaleDateString("es-CO")}`,
+        message_template_id: templateId,
+        lead_ids: leadIds,
+      });
+      onCreated(leadIds.length);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear la campaña.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose}>
+      <DialogTitle>Crear campaña</DialogTitle>
+      <DialogDescription>Agrupa {leadIds.length} leads con una plantilla de mensaje.</DialogDescription>
+      <div className="mt-5 space-y-4">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder={`Campaña ${new Date().toLocaleDateString("es-CO")}`}
+          className="w-full rounded-lg border border-border/50 bg-input px-3 py-2.5 text-[13px] text-ink outline-none focus:border-accent/50"
+        />
+        {templates.length === 0 ? (
+          <p className="text-[13px] text-ink-muted">Primero crea una plantilla en <Link href="/templates" className="text-accent hover:underline">Plantillas</Link>.</p>
+        ) : (
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {templates.map((template) => (
+              <button
+                key={template.id}
+                onClick={() => setTemplateId(template.id)}
+                className={cn("w-full rounded-lg border p-3 text-left", templateId === template.id ? "border-accent/50 bg-accent/10" : "border-border/40 bg-input hover:border-border")}
+              >
+                <p className="text-[13px] font-medium text-ink">{template.name}</p>
+                <p className="mt-0.5 line-clamp-2 text-[12px] text-ink-dim">{template.content}</p>
+              </button>
+            ))}
+          </div>
+        )}
+        {error && <p className="rounded-lg bg-red/10 px-3 py-2 text-[12px] text-red">{error}</p>}
+      </div>
+      <div className="mt-6 flex justify-end gap-2">
+        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+        <Button onClick={() => void create()} disabled={saving || !templateId}>
+          {saving ? <RefreshCw size={14} className="animate-spin" /> : <Megaphone size={14} />} Crear campaña
+        </Button>
+      </div>
+    </Dialog>
+  );
+}

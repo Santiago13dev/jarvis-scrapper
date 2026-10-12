@@ -57,7 +57,7 @@ Hexagonal Architecture (Ports & Adapters):
 | Cache/Queue | Redis 7, ARQ |
 | Maps | Leaflet + react-leaflet 4.2 |
 | Charts | Recharts 3.10 |
-| Excel | xlsx 0.18.5 (frontend), openpyxl 3.1.5 (backend) |
+| Export | CSV compatible con Excel generado en el navegador (`lib/leads.ts`); openpyxl 3.1.5 (backend) |
 | Auth | JWT (python-jose) + bcrypt (passlib) |
 | AI | OpenAI gpt-4o-mini |
 | Scraper | gosom/google-maps-scraper (Go, web mode at :8080) |
@@ -89,14 +89,16 @@ frontend/src/
 │   ├── login/page.tsx      # Login with robot AI background
 │   ├── register/page.tsx   # Registration
 │   ├── dashboard/page.tsx  # KPIs, map, charts
-│   ├── leads/page.tsx      # Main leads table + filters + detail panel
+│   ├── leads/page.tsx      # Leads: stats, quick filters, table/cards, drawer, import jobs
+│   ├── outreach/page.tsx   # "Contactar hoy": daily queue + follow-ups (assisted WhatsApp)
 │   ├── campaigns/page.tsx  # Campaign list
 │   ├── templates/page.tsx  # Message templates
 │   ├── conversations/page.tsx  # Chat split view
 │   ├── whatsapp/page.tsx   # QR code + status
 │   └── settings/page.tsx   # Workspace/AI/WhatsApp config
 ├── components/
-│   ├── layout/ (sidebar, topbar, app-shell, logo)
+│   ├── layout/ (sidebar + mobile bottom nav, topbar, app-shell, logo)
+│   ├── leads/ (import-panel, lead-drawer, lead-badges)
 │   └── ui/ (button, card, dialog, badge, score-ring, bogota-map)
 ├── hooks/use-active-workspace.ts  # Workspace from localStorage
 ├── lib/api-client.ts              # HTTP client (fetch, JWT auth)
@@ -145,8 +147,12 @@ backend/app/
 ### Key API Routes (all under /api/v1)
 - `POST /auth/login` → JWT tokens
 - `GET /users/me/workspaces` → list workspaces
-- `GET /workspaces/{id}/leads` → list leads
-- `POST /workspaces/{id}/leads/import` → scrape Google Maps (async)
+- `GET /workspaces/{id}/leads?limit=5000` → list leads (default limit is 50!)
+- `POST /workspaces/{id}/leads/import-jobs` → background Google Maps search (ARQ `import_leads_job`); poll `GET .../import-jobs/{job_id}`
+- `POST /workspaces/{id}/leads/enrich` → re-enrich + re-score all leads
+- `GET /workspaces/{id}/leads/outreach-queue` / `POST .../leads/{lead_id}/contacted` → "Contactar hoy"
+- `GET|PATCH /workspaces/{id}/settings` → workspace name, category, AI knowledge base
+- `GET|POST /whatsapp/cloud/webhook` → Meta Cloud API (signature-verified)
 - `POST /workspaces/{id}/campaigns` → create campaign
 - `GET /workspaces/{id}/templates/messages` → list templates (NOT /templates)
 - `GET /workspaces/{id}/dashboard/summary` → KPIs
@@ -154,6 +160,11 @@ backend/app/
 ### CSV Column Mapping (Google Maps Scraper)
 The gosom scraper outputs: `review_rating`, `review_count` (not `rating`/`reviews_count`)
 Fixed in `backend/app/infrastructure/adapters/scraper/google_maps_adapter.py` lines 96-97
+
+### Gotchas
+- `prospectai_worker` has no auto-reload: `docker restart prospectai_worker` after backend job changes.
+- On Windows the frontend container may not see new files: `docker restart prospectai_frontend`.
+- Lead scoring = "potencial de venta" (fit + digital gap). `WebAudit.audited_at` defaults to now, so detect a real audit by its result fields.
 
 ---
 
@@ -164,7 +175,8 @@ organizations → workspaces → users (+ workspace_memberships)
 leads (unique on workspace_id + raw_source_id)
 campaigns → campaign_leads (N:M)
 message_templates, conversations → messages
-lead_notes, lead_tasks, demo_page_templates
+lead_notes, lead_tasks, lead_follow_ups, lead_import_jobs, demo_page_templates
+workspaces.knowledge_base (AI agent context, migration 0008)
 
 ---
 
