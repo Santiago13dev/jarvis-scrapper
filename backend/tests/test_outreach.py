@@ -74,3 +74,12 @@ def test_do_not_contact_is_respected():
     lead = scored_lead(name="Acme", phone="3001234567")
     lead.do_not_contact = True
     assert not is_contactable(lead)
+
+
+def test_opt_out_messages_are_detected():
+    from app.domain.services.outreach import is_opt_out
+
+    for text in ("No me interesa, gracias", "no gracias", "Por favor no me escriban más", "Dejen de molestar", "STOP"):
+        assert is_opt_out(text), text
+    for text in ("Sí, cuéntame más", "no tengo tiempo hoy, mañana sí", "me gustaría dar de baja el plan anterior"):
+        assert not is_opt_out(text), text

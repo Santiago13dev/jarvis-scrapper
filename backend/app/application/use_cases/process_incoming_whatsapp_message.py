@@ -54,6 +54,12 @@ class ProcessIncomingWhatsAppMessageUseCase:
         inbound = Message(direction=MessageDirection.INBOUND, sender=MessageSender.LEAD, text=request.text)
         await self._conversations.append_message(request.workspace_id, conversation.id, inbound)
 
+        # El lead respondió: se actualiza su estado y, si pidió no ser contactado, se respeta.
+        opted_out = await self._register_reply(request.workspace_id, conversation.lead_id, request.text)
+        if opted_out:
+            await self._conversations.mark_transferred_to_human(request.workspace_id, conversation.id)
+            return conversation
+
         if conversation.is_transferred_to_human:
             # Ya transferida: no se auto-responde, un humano la está atendiendo.
             return conversation
@@ -85,11 +91,15 @@ class ProcessIncomingWhatsAppMessageUseCase:
             )
             return conversation
 
-        await self._messaging.send_message(
-            OutboundMessage(
-                tenant_id=request.workspace_id, to_phone=request.from_phone, text=chat_response.reply
+        try:
+            await self._messaging.send_message(
+                OutboundMessage(
+                    tenant_id=request.workspace_id, to_phone=request.from_phone, text=chat_response.reply
+                )
             )
-        )
+        except Exception:  # noqa: BLE001 — p. ej. modo asistido: responde una persona
+            await self._conversations.mark_transferred_to_human(request.workspace_id, conversation.id)
+            return conversation
         outbound = Message(
             direction=MessageDirection.OUTBOUND, sender=MessageSender.AI_AGENT, text=chat_response.reply
         )
@@ -104,6 +114,25 @@ class ProcessIncomingWhatsAppMessageUseCase:
         )
 
         return conversation
+
+    async def _register_reply(self, workspace_id: str, lead_id: str | None, text: str) -> bool:
+        """Marca el lead como «respondió»; devuelve True si pidió no ser contactado."""
+        from app.domain.entities.lead import LeadStatus
+        from app.domain.services.outreach import is_opt_out
+
+        if not lead_id:
+            return False
+        lead = await self._leads.get_by_id(workspace_id, lead_id)
+        if lead is None:
+            return False
+        opted_out = is_opt_out(text)
+        if opted_out:
+            lead.do_not_contact = True
+            lead.change_status(LeadStatus.LOST)
+        elif lead.status in (LeadStatus.NEW, LeadStatus.CONTACTED):
+            lead.change_status(LeadStatus.REPLIED)
+        await self._leads.update(workspace_id, lead)
+        return opted_out
 
     async def _find_or_create_lead_stub(self, workspace_id: str, phone: str):
         """

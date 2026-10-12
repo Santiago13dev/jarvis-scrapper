@@ -19,6 +19,7 @@ from app.infrastructure.api.v1.templates.router import router as templates_route
 from app.infrastructure.api.v1.users.router import router as users_router
 from app.infrastructure.api.v1.whatsapp.router import router as whatsapp_router
 from app.infrastructure.api.v1.whatsapp.router import webhook_router as whatsapp_webhook_router
+from app.infrastructure.api.v1.whatsapp.cloud_router import router as whatsapp_cloud_router
 from app.infrastructure.config.config import get_settings
 
 settings = get_settings()
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
 
     # Webhook público de WhatsApp (lo llama el servidor OpenWA, no un usuario logueado)
     app.include_router(whatsapp_webhook_router, prefix="/api/v1/whatsapp", tags=["whatsapp-webhook"])
+    app.include_router(whatsapp_cloud_router, prefix="/api/v1/whatsapp/cloud", tags=["whatsapp-cloud"])
 
     # Rutas scoped por workspace (Organization → Workspace → User)
     workspace_prefix = "/api/v1/workspaces/{workspace_id}"

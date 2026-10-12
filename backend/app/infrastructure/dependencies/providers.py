@@ -88,7 +88,20 @@ def get_ai_provider() -> AIProvider:
 
 
 def get_messaging_provider() -> MessagingProvider:
-    return OpenWAAdapter()
+    """Proveedor según WHATSAPP_PROVIDER: assisted (por defecto), cloud_api u openwa."""
+    from app.infrastructure.adapters.messaging.whatsapp_cloud_adapter import (
+        AssistedMessagingAdapter,
+        WhatsAppCloudApiAdapter,
+    )
+
+    from app.infrastructure.config.config import get_settings
+
+    provider = get_settings().whatsapp_provider.lower()
+    if provider == "cloud_api":
+        return WhatsAppCloudApiAdapter()
+    if provider == "openwa":
+        return OpenWAAdapter()
+    return AssistedMessagingAdapter()
 
 
 def get_scraper_provider() -> ScraperProvider:

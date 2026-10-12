@@ -95,5 +95,22 @@ def priority(lead: Lead, now: datetime | None = None) -> float:
     return score
 
 
+OPT_OUT_PATTERNS = (
+    r"\bno\s+(me\s+)?interesa",
+    r"\bno\s+gracias\b",
+    r"\bno\s+(me\s+)?(escrib|contact|molest|llam)",
+    r"\b(dejen?|deja)\s+de\s+(escribir|molestar|enviar)",
+    r"^\s*(stop|baja)\s*[.!]*\s*$",
+    r"\b(unsubscribe|cancelar\s+suscripci)",
+    r"\bbor(ren|ra)\s+mi\s+n[uú]mero",
+)
+
+
+def is_opt_out(text: str) -> bool:
+    """¿El mensaje pide no volver a ser contactado? (Habeas data / buenas prácticas)."""
+    normalized = text.lower().strip()
+    return any(re.search(pattern, normalized) for pattern in OPT_OUT_PATTERNS)
+
+
 def is_contactable(lead: Lead) -> bool:
     return not lead.do_not_contact and bool(lead.whatsapp) and lead.status in (LeadStatus.NEW, LeadStatus.CONTACTED)
