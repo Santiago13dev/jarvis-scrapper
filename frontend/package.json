@@ -21,8 +21,7 @@
     "react-leaflet": "^4.2.1",
     "recharts": "^3.10.1",
     "tailwind-merge": "2.5.2",
-    "tailwindcss": "3.4.13",
-    "xlsx": "^0.18.5"
+    "tailwindcss": "3.4.13"
   },
   "devDependencies": {
     "@types/node": "22.7.4",
