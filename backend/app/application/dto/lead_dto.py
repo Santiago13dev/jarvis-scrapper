@@ -15,12 +15,15 @@ class ImportLeadsRequest:
     location: str
     max_results: int = 100
     depth: int = 1
+    extract_emails: bool = True
+    country: str = "CO"
 
 
 @dataclass(frozen=True)
 class ImportLeadsResult:
     imported: list[Lead]
     skipped_duplicates: int
+    skipped_closed: int = 0
 
 
 @dataclass(frozen=True)

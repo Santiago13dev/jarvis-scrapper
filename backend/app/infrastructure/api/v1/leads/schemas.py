@@ -24,7 +24,10 @@ class LeadResponse(BaseModel):
     website: str | None
     email: str | None
     whatsapp: str | None
+    instagram: str | None
+    facebook: str | None
     category: str | None
+    country: str | None
     rating: float | None
     reviews_count: int | None
     lead_score: int | None
@@ -46,11 +49,14 @@ class ImportLeadsBody(BaseModel):
     location: str
     max_results: int = 100
     depth: int = 1
+    extract_emails: bool = True
+    country: str = "CO"
 
 
 class ImportLeadsResponse(BaseModel):
     imported_count: int
     skipped_duplicates: int
+    skipped_closed: int = 0
     leads: list[LeadResponse]
 
 

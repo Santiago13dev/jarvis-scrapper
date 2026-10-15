@@ -119,11 +119,13 @@ async def default_knowledge_base_lookup(workspace_id: str) -> str:
     """
     Implementación por defecto de KnowledgeBaseLookup (usada por
     ProcessIncomingWhatsAppMessageUseCase). Lee la base de conocimiento configurable del
-    workspace desde caché (clave `kb:{workspace_id}`). En el futuro esto debería venir de
-    una tabla `workspace_settings` administrable desde el frontend; por ahora, si no hay
-    nada configurado, devuelve una cadena vacía y el agente IA transferirá a un humano
-    (nunca inventa información, tal como exige el dominio).
+    workspace (editable en Configuración → Agente IA). Si no hay nada configurado devuelve
+    una cadena vacía y el agente IA transferirá a un humano (nunca inventa información,
+    tal como exige el dominio).
     """
-    cache = get_cache_provider()
-    value = await cache.get(f"kb:{workspace_id}")
-    return value or ""
+    from app.infrastructure.database.models.workspace import WorkspaceModel
+    from app.infrastructure.database.session import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        workspace = await session.get(WorkspaceModel, workspace_id)
+    return (workspace.knowledge_base or "") if workspace else ""

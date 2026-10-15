@@ -1,13 +1,36 @@
+const fs = require("fs");
+const path = require("path");
 const http = require("http");
 const { Client, LocalAuth } = require("whatsapp-web.js");
 const qrcode = require("qrcode");
 
 const PORT = 8080;
+// Las respuestas de los clientes se reenvían al backend para cortar seguimientos y avanzar el embudo
+const BACKEND_WEBHOOK_URL = process.env.BACKEND_WEBHOOK_URL || "http://backend:8000/api/v1/whatsapp/webhook";
 let sessionStatus = "LOADING";
 let qrDataUrl = null;
 let client = null;
 
+// Al recrear el contenedor cambia el hostname y Chromium cree que otro proceso usa el perfil:
+// se borran los candados (Singleton*) que quedaron en el volumen de la sesión.
+function removeStaleChromiumLocks(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.name.startsWith("Singleton")) {
+      fs.rmSync(full, { force: true });
+    } else if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      removeStaleChromiumLocks(full);
+    }
+  }
+}
+
 function initClient() {
+  try {
+    removeStaleChromiumLocks("/data");
+  } catch (err) {
+    console.error("[wa] No se pudieron limpiar los candados de Chromium:", err.message);
+  }
   client = new Client({
     authStrategy: new LocalAuth({ dataPath: "/data" }),
     puppeteer: {
@@ -45,7 +68,18 @@ function initClient() {
   });
 
   client.on("message", async (msg) => {
+    // Solo chats individuales: nada de grupos, estados ni mensajes propios
+    if (msg.fromMe || !msg.from.endsWith("@c.us")) return;
     console.log(`[wa] Message from ${msg.from}: ${msg.body.substring(0, 50)}`);
+    try {
+      await fetch(BACKEND_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session: "main", from: msg.from, body: msg.body }),
+      });
+    } catch (err) {
+      console.error("[wa] No se pudo reenviar el mensaje al backend:", err.message);
+    }
   });
 
   client.initialize().catch((err) => {
@@ -70,6 +104,35 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname.match(/^\/session\/.*\/status$/)) {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: sessionStatus === "CONNECTED" ? "WORKING" : sessionStatus }));
+    return;
+  }
+
+  if (url.pathname === "/me") {
+    const info = sessionStatus === "CONNECTED" && client && client.info ? client.info : null;
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      status: sessionStatus === "CONNECTED" ? "WORKING" : sessionStatus,
+      phone: info && info.wid ? info.wid.user : null,
+      name: info ? info.pushname || null : null,
+      platform: info ? info.platform || null : null,
+    }));
+    return;
+  }
+
+  if (url.pathname === "/logout" && req.method === "POST") {
+    try {
+      if (client) {
+        await client.logout().catch(() => {});
+        await client.destroy().catch(() => {});
+      }
+    } finally {
+      client = null;
+      sessionStatus = "LOADING";
+      qrDataUrl = null;
+      setTimeout(initClient, 2000);
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 

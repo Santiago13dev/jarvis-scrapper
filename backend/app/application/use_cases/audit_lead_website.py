@@ -22,7 +22,14 @@ class AuditLeadWebsiteUseCase:
         self._session = session
         self._audit_service = audit_service
 
-    async def execute(self, workspace_id: str, lead_id: str, url: str | None = None) -> WebsiteAuditResult:
+    async def execute(
+        self,
+        workspace_id: str,
+        lead_id: str,
+        url: str | None = None,
+        prefetched_result: WebsiteAuditResult | None = None,
+    ) -> WebsiteAuditResult:
+        """`prefetched_result` permite auditar muchos sitios en paralelo y persistir después en serie."""
         lead = await self._leads.get_by_id(workspace_id, lead_id)
         if lead is None:
             raise ValueError(f"Lead {lead_id} no encontrado en workspace {workspace_id}")
@@ -30,7 +37,7 @@ class AuditLeadWebsiteUseCase:
         if not target_url:
             raise ValueError("El lead no tiene sitio web para auditar")
 
-        audit_result = await self._audit_service.audit(target_url)
+        audit_result = prefetched_result or await self._audit_service.audit(target_url)
         model = await self._get_audit(lead_id)
         if model is None:
             model = WebAuditModel(lead_id=lead_id)
@@ -43,6 +50,8 @@ class AuditLeadWebsiteUseCase:
         model.load_time_ms = audit_result.response_time_ms
         model.result = audit_result.model_dump(mode="json")
         await self._session.flush()
+        if self._fill_social_profiles(lead, audit_result.social_links):
+            await self._leads.update(workspace_id, lead)
 
         await RecalculateLeadScoreUseCase(self._leads, self._session).execute(
             workspace_id,
@@ -60,6 +69,19 @@ class AuditLeadWebsiteUseCase:
             ),
         )
         return audit_result
+
+    @staticmethod
+    def _fill_social_profiles(lead, social_links: list[str]) -> bool:
+        changed = False
+        for link in social_links:
+            lowered = link.lower()
+            if lead.instagram is None and "instagram.com/" in lowered:
+                lead.instagram = link
+                changed = True
+            elif lead.facebook is None and "facebook.com/" in lowered and "sharer" not in lowered:
+                lead.facebook = link
+                changed = True
+        return changed
 
     async def _get_audit(self, lead_id: str) -> WebAuditModel | None:
         result = await self._session.execute(

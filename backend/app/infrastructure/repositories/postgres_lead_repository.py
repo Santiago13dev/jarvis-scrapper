@@ -72,7 +72,15 @@ class PostgresLeadRepository(LeadRepository):
                 setattr(model, column, getattr(updated, column))
 
         await self._session.flush()
-        return LeadMapper.to_entity(model)
+        # El flush expira las relaciones; recargarlas evita un lazy-load síncrono (MissingGreenlet)
+        stmt = (
+            select(LeadModel)
+            .where(LeadModel.id == lead.id)
+            .options(selectinload(LeadModel.notes), selectinload(LeadModel.tasks))
+            .execution_options(populate_existing=True)
+        )
+        result = await self._session.execute(stmt)
+        return LeadMapper.to_entity(result.scalar_one())
 
     async def bulk_create(self, workspace_id: str, leads: Sequence[Lead]) -> Sequence[Lead]:
         models = [LeadMapper.to_model(lead) for lead in leads]

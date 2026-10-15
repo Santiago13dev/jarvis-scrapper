@@ -46,6 +46,8 @@ class LeadScoringResult(BaseModel):
     reasons: list[LeadScoringReason]
     calculated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     niche: str = "default"
+    recommended_service: str | None = None
+    pitch: str | None = None
 
 
 class RecalculateLeadScoreRequest(BaseModel):

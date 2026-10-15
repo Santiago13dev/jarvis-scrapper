@@ -91,6 +91,7 @@ class RecalculateLeadScoreUseCase:
         if model is None:
             return WebAudit(lead_id=lead_id)
         audited_at = model.audited_at
+        result = model.result or {}
         if audited_at.tzinfo is None:
             audited_at = audited_at.replace(tzinfo=timezone.utc)
         return WebAudit(
@@ -101,5 +102,8 @@ class RecalculateLeadScoreUseCase:
             has_meta_description=model.has_meta_description,
             mobile_friendly=model.mobile_friendly,
             load_time_ms=model.load_time_ms,
+            has_chatbot=bool(result.get("chatbot_widgets")) if result else None,
+            has_whatsapp_link=bool(result.get("whatsapp_links")) if result else None,
+            has_contact_form=bool(result.get("forms")) if result else None,
             audited_at=audited_at,
         )

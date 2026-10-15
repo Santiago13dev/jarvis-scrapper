@@ -56,6 +56,9 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Docker Desktop en Windows no propaga eventos de archivos: sin polling no hay recarga en caliente
+      WATCHPACK_POLLING: "true"
     depends_on:
       - backend
     ports:

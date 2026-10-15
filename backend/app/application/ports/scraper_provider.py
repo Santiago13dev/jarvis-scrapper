@@ -23,6 +23,12 @@ class ScrapedBusiness:
     latitude: float | None
     longitude: float | None
     raw_source_id: str | None  # id/place_id original, útil para deduplicación
+    emails: tuple[str, ...] = ()
+    instagram: str | None = None
+    facebook: str | None = None
+    owner_name: str | None = None
+    description: str | None = None
+    permanently_closed: bool = False
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,8 @@ class ScrapeQuery:
     max_results: int = 100
     language: str | None = None
     depth: int = 1
+    extract_emails: bool = True
+    country: str = "CO"
 
 
 class ScraperProvider(ABC):
