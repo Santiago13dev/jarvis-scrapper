@@ -40,9 +40,11 @@ export async function apiFetch<T>(
     if (response.status === 401 && typeof window !== "undefined") {
       window.localStorage.removeItem("jarvisia_access_token");
       window.localStorage.removeItem("jarvisia_refresh_token");
+      if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
       throw new ApiError(401, "Sesión expirada. Inicia sesión de nuevo.");
     }
-    throw new ApiError(response.status, body.detail ?? response.statusText);
+    const detail = Array.isArray(body.detail) ? body.detail.map((item: { msg?: string }) => item.msg).join(". ") : body.detail;
+    throw new ApiError(response.status, detail ?? response.statusText);
   }
 
   if (response.status === 204) {

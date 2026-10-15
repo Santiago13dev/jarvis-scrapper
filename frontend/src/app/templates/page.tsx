@@ -54,43 +54,42 @@ export default function TemplatesPage() {
   return (
     <AppShell>
       <div className="space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <h1 className="font-display text-xl font-bold text-ink">Plantillas</h1>
-            <p className="text-[12px] text-ink-muted mt-0.5">Mensajes predefinidos para campañas de outreach</p>
+            <h2 className="font-display text-[22px] font-semibold tracking-tight text-ink">Mensajes reutilizables</h2>
+            <p className="mt-1 text-[13.5px] text-ink-muted">Se usan en Campañas. Escribe <code className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[12.5px] text-ink">{"{{lead_name}}"}</code> y Jarvis pondrá el nombre de cada negocio.</p>
           </div>
-          <Button onClick={openCreateModal} className="self-start bg-accent hover:bg-accent-hover text-white sm:self-auto"><Plus size={14} /> Nueva plantilla</Button>
+          <button onClick={openCreateModal} className="flex shrink-0 items-center gap-2 self-start rounded-lg bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-ink sm:self-auto"><Plus size={15} /> Nueva plantilla</button>
         </div>
 
         {error && <div className="rounded-xl border border-red/30 bg-red/10 p-4 text-[13px] text-red">{error}</div>}
 
         {templates?.length === 0 && (
-          <div className="rounded-xl border border-border/40 bg-card py-16 text-center">
-            <FileText className="mx-auto mb-4 text-ink-dim/30" size={40} />
-            <p className="text-[13px] text-ink-muted">No hay plantillas creadas todavía</p>
+          <div className="rounded-2xl border border-border bg-card px-6 py-16 text-center">
+            <FileText className="mx-auto text-ink-dim" size={28} />
+            <p className="mt-4 text-[15px] font-semibold text-ink">No hay plantillas todavía</p>
+            <p className="mt-1 text-[13px] text-ink-dim">Crea una para usarla en tus campañas.</p>
           </div>
         )}
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {templates === null && Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-40 rounded-xl bg-card border border-border/40 animate-pulse" />
+            <div key={i} className="h-44 animate-pulse rounded-2xl border border-border bg-card" />
           ))}
           {templates?.map((tpl) => (
-            <div key={tpl.id} className="group rounded-xl border border-border/40 bg-card p-5 transition-all hover:border-accent/20 hover:bg-card-hover">
+            <div key={tpl.id} className="group flex flex-col rounded-2xl border border-border bg-card p-6 transition-colors hover:border-border-light">
               <div className="mb-4 flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-accent/15 p-2"><MessageSquare size={14} className="text-accent" /></div>
-                  <h3 className="font-medium text-ink text-[13px]">{tpl.name}</h3>
+                  <div className="rounded-lg bg-white/[0.05] p-2"><MessageSquare size={15} className="text-pink" /></div>
+                  <h3 className="text-[14.5px] font-medium text-ink">{tpl.name}</h3>
                 </div>
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEditModal(tpl)} className="rounded-lg p-1.5 text-ink-dim hover:text-accent hover:bg-accent/10 transition-colors" title="Editar"><Pencil size={12} /></button>
-                  <button onClick={() => setDeleteConfirmId(tpl.id)} className="rounded-lg p-1.5 text-ink-dim hover:text-red hover:bg-red/10 transition-colors" title="Eliminar"><Trash2 size={12} /></button>
+                  <button onClick={() => openEditModal(tpl)} className="rounded-lg p-1.5 text-ink-dim transition-colors hover:bg-white/[0.05] hover:text-ink" title="Editar"><Pencil size={14} /></button>
+                  <button onClick={() => setDeleteConfirmId(tpl.id)} className="rounded-lg p-1.5 text-ink-dim transition-colors hover:bg-white/[0.05] hover:text-red" title="Eliminar"><Trash2 size={14} /></button>
                 </div>
               </div>
-              <p className="text-[12px] text-ink-muted line-clamp-3 leading-relaxed">{tpl.content}</p>
-              <div className="mt-4 pt-3 border-t border-border/20">
-                <span className="text-[9px] text-ink-dim uppercase tracking-wider">Plantilla de mensaje</span>
-              </div>
+              <p className="flex-1 whitespace-pre-line rounded-xl bg-white/[0.035] px-4 py-3 text-[13px] leading-relaxed text-ink-muted line-clamp-5">{tpl.content}</p>
+
             </div>
           ))}
         </div>
@@ -98,7 +97,7 @@ export default function TemplatesPage() {
 
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
         <DialogTitle>{editingTemplate ? "Editar plantilla" : "Nueva plantilla"}</DialogTitle>
-        <DialogDescription>{editingTemplate ? "Modificá el nombre o contenido." : "Creá un mensaje para tus campañas."}</DialogDescription>
+        <DialogDescription>{editingTemplate ? "Modifica el nombre o el contenido." : "Crea un mensaje para tus campañas."}</DialogDescription>
         <div className="mt-5 space-y-4">
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Nombre</label>
@@ -108,13 +107,14 @@ export default function TemplatesPage() {
           <div>
             <label className="mb-1.5 block text-[11px] font-medium text-ink-muted uppercase tracking-wider">Mensaje</label>
             <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={5}
-              placeholder="Hola {nombre}, vi tu negocio {categoria} en Google Maps..."
+              placeholder="Hola {{lead_name}}, vi tu negocio en Google Maps…"
               className="w-full rounded-lg border border-border/50 bg-input px-4 py-2.5 text-[13px] text-ink placeholder:text-ink-dim focus:border-accent/50 focus:ring-1 focus:ring-accent/20 outline-none transition-colors resize-none" />
+            <p className="mt-1.5 text-[12px] text-ink-dim">Usa {"{{lead_name}}"} para el nombre del negocio.</p>
           </div>
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setModalOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving || !name.trim() || !content.trim()} className="bg-accent hover:bg-accent-hover text-white">
+          <Button onClick={handleSave} disabled={saving || !name.trim() || !content.trim()} className="bg-accent hover:bg-accent-hover text-accent-ink">
             {saving ? "Guardando..." : editingTemplate ? "Guardar" : "Crear plantilla"}
           </Button>
         </div>
@@ -122,7 +122,7 @@ export default function TemplatesPage() {
 
       <Dialog open={!!deleteConfirmId} onClose={() => setDeleteConfirmId(null)}>
         <DialogTitle>Eliminar plantilla</DialogTitle>
-        <DialogDescription>¿Seguro que querés eliminar esta plantilla?</DialogDescription>
+        <DialogDescription>¿Seguro que quieres eliminar esta plantilla?</DialogDescription>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
           <Button variant="danger" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}><Trash2 size={14} /> Eliminar</Button>

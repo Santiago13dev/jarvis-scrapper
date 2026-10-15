@@ -2,14 +2,17 @@
 
 import { cn } from "@/lib/utils";
 
-export function Logo({ className }: { className?: string }) {
+/** Orbe de Jarvis: núcleo verde neón con anillos HUD girando. */
+export function Logo({ className, animated = true }: { className?: string; animated?: boolean }) {
   return (
-    <div className={cn("relative flex h-9 w-9 items-center justify-center", className)}>
-      {/* Diamond shape */}
-      <div className="absolute inset-0 rotate-45 rounded-lg bg-accent/20 border border-accent/30" />
-      <div className="absolute inset-[3px] rotate-45 rounded-md bg-accent/30" />
-      {/* Center dot */}
-      <div className="relative h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_8px_rgba(130,90,255,0.6)]" />
+    <div className={cn("relative flex h-9 w-9 items-center justify-center", className)} aria-hidden>
+      <svg viewBox="0 0 40 40" className={cn("absolute inset-0 h-full w-full", animated && "orb-spin")}>
+        <circle cx="20" cy="20" r="18" fill="none" stroke="rgb(var(--accent))" strokeOpacity="0.55" strokeWidth="1.2" strokeDasharray="20 8 4 8" />
+      </svg>
+      <svg viewBox="0 0 40 40" className={cn("absolute inset-0 h-full w-full", animated && "orb-spin-reverse")}>
+        <circle cx="20" cy="20" r="13" fill="none" stroke="rgb(var(--cyan))" strokeOpacity="0.45" strokeWidth="1" strokeDasharray="3 5" />
+      </svg>
+      <div className={cn("relative h-[38%] w-[38%] rounded-full bg-accent shadow-[0_0_14px_rgb(var(--accent)/0.9)]", animated && "orb-breathe")} />
     </div>
   );
 }

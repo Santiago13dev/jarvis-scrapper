@@ -5,15 +5,16 @@ import { Megaphone, Pause, Play, Square, Trash2, Users, Clock, RefreshCw } from 
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Stat } from "@/components/ui/panel";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
 import type { Campaign, Lead, MessageTemplate } from "@/types/api";
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-ink-dim/15 text-ink-muted border-ink-dim/20",
-  running: "bg-teal/15 text-teal border-teal/25",
-  paused: "bg-amber/15 text-amber border-amber/25",
-  finished: "bg-accent/15 text-accent border-accent/25",
+const STATUS_META: Record<string, { label: string; dot: string }> = {
+  draft: { label: "Borrador", dot: "bg-ink-dim" },
+  running: { label: "Enviando", dot: "bg-accent" },
+  paused: { label: "En pausa", dot: "bg-amber" },
+  finished: { label: "Finalizada", dot: "bg-blue" },
 };
 
 export default function CampaignsPage() {
@@ -42,7 +43,7 @@ export default function CampaignsPage() {
     setError(null);
     try {
       const [availableLeads, availableTemplates] = await Promise.all([
-        api.get<Lead[]>(`/workspaces/${workspaceId}/leads`),
+        api.get<Lead[]>(`/workspaces/${workspaceId}/leads?limit=5000`),
         api.get<MessageTemplate[]>(`/workspaces/${workspaceId}/templates/messages`),
       ]);
       setLeads(availableLeads);
@@ -94,49 +95,39 @@ export default function CampaignsPage() {
   return (
     <AppShell>
       <div className="space-y-4 sm:space-y-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="font-display text-xl font-bold text-ink">Campañas</h1>
-            <p className="text-[12px] text-ink-muted mt-0.5">Secuencias automatizadas de outreach por WhatsApp</p>
+            <h2 className="font-display text-[22px] font-semibold tracking-tight text-ink">Envíos agrupados con plantilla</h2>
+            <p className="mt-1 text-[13.5px] text-ink-muted">Para mandar el mismo mensaje a un grupo de leads. Para mensajes personalizados usa &quot;Aprobar mensajes&quot;.</p>
           </div>
-          <Button onClick={openCreateDialog} className="shrink-0 bg-accent hover:bg-accent-hover text-white text-[12px]">
-            <Megaphone size={14} /> Nueva campaña
-          </Button>
+          <button onClick={openCreateDialog} className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-[13px] font-semibold text-accent-ink">
+            <Megaphone size={15} /> Nueva campaña
+          </button>
         </div>
 
         {error && <div className="rounded-xl border border-red/30 bg-red/10 p-4 text-[13px] text-red">{error}</div>}
 
         {campaigns && campaigns.length > 0 && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {[
-              { label: "Total", value: campaigns.length, icon: Megaphone, color: "bg-accent/15 text-accent" },
-              { label: "Activas", value: campaigns.filter((c) => c.status === "running").length, icon: Play, color: "bg-teal/15 text-teal" },
-              { label: "Borradores", value: campaigns.filter((c) => c.status === "draft").length, icon: Clock, color: "bg-amber/15 text-amber" },
-            ].map((s) => (
-              <div key={s.label} className="rounded-lg border border-border/40 bg-card p-4">
-                <div className="flex items-center gap-3">
-                  <div className={`rounded-lg p-2 ${s.color}`}><s.icon size={16} /></div>
-                  <div>
-                    <p className="text-xl font-bold text-ink font-mono-data">{s.value}</p>
-                    <p className="text-[10px] text-ink-dim uppercase tracking-wider">{s.label}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+              { label: "Campañas", value: campaigns.length, icon: Megaphone, tone: "orange" as const },
+              { label: "Enviando", value: campaigns.filter((c) => c.status === "running").length, icon: Play, tone: "green" as const },
+              { label: "Borradores", value: campaigns.filter((c) => c.status === "draft").length, icon: Clock, tone: "gray" as const },
+            ].map((item) => <Stat key={item.label} icon={item.icon} label={item.label} value={item.value} tone={item.tone} />)}
           </div>
         )}
 
         {campaigns?.length === 0 && (
-          <div className="rounded-xl border border-border/40 bg-card py-16 text-center">
-            <Megaphone className="mx-auto mb-4 text-ink-dim/30" size={40} />
-            <p className="text-[13px] text-ink-muted">Sin campañas todavía</p>
-            <p className="text-[11px] text-ink-dim mt-1">Crea una desde la ficha de un lead</p>
+          <div className="rounded-2xl border border-border bg-card px-6 py-16 text-center">
+            <Megaphone className="mx-auto text-ink-dim" size={28} />
+            <p className="mt-4 text-[15px] font-semibold text-ink">Sin campañas todavía</p>
+            <p className="mt-1 text-[13px] text-ink-dim">Crea una aquí o seleccionando leads en Buscar clientes.</p>
           </div>
         )}
 
         <div className="flex flex-col gap-3">
           {campaigns === null && Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-20 rounded-xl bg-card border border-border/40 animate-pulse" />
+            <div key={i} className="h-20 animate-pulse rounded-2xl border border-border bg-card" />
           ))}
           {campaigns?.map((campaign) => {
             const actions: { action: string; icon: typeof Play; label: string; variant?: "primary" | "secondary" | "danger" }[] = [];
@@ -145,19 +136,19 @@ export default function CampaignsPage() {
             else if (campaign.status === "paused") { actions.push({ action: "resume", icon: Play, label: "Reanudar", variant: "primary" }); actions.push({ action: "finish", icon: Square, label: "Finalizar", variant: "secondary" }); }
 
             return (
-              <div key={campaign.id} className="group rounded-lg border border-border/40 bg-card p-4 transition-all hover:border-accent/20 hover:bg-card-hover sm:p-5">
+              <div key={campaign.id} className="group rounded-2xl border border-border bg-card p-5 transition-colors hover:border-border-light">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
-                    <div className="rounded-lg bg-accent/15 p-2.5"><Megaphone size={16} className="text-accent" /></div>
+                    <div className="rounded-lg bg-white/[0.05] p-2.5"><Megaphone size={16} className="text-orange" /></div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2.5">
-                        <p className="truncate font-medium text-ink text-[13px]">{campaign.name}</p>
-                        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${STATUS_COLORS[campaign.status] || ""}`}>{campaign.status}</span>
+                        <p className="truncate text-[14.5px] font-medium text-ink">{campaign.name}</p>
+                        <span className="flex items-center gap-1.5 text-[12px] text-ink-muted"><span className={`h-1.5 w-1.5 rounded-full ${STATUS_META[campaign.status]?.dot ?? "bg-ink-dim"}`} />{STATUS_META[campaign.status]?.label ?? campaign.status}</span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-3">
-                        <span className="flex items-center gap-1 text-[11px] text-ink-muted"><Users size={10} />{campaign.lead_ids.length} leads</span>
+                        <span className="flex items-center gap-1.5 text-[12.5px] text-ink-dim"><Users size={12} />{campaign.lead_ids.length} leads</span>
                         <span className="text-ink-dim">·</span>
-                        <span className="text-[11px] text-ink-dim">{new Date(campaign.created_at).toLocaleDateString()}</span>
+                        <span className="text-[12.5px] text-ink-dim">{new Date(campaign.created_at).toLocaleDateString("es-CO", { day: "numeric", month: "short", year: "numeric" })}</span>
                       </div>
                     </div>
                   </div>
@@ -180,7 +171,7 @@ export default function CampaignsPage() {
 
       <Dialog open={!!deleteConfirmId} onClose={() => setDeleteConfirmId(null)}>
         <DialogTitle>Eliminar campaña</DialogTitle>
-        <DialogDescription>¿Seguro que querés eliminar esta campaña?</DialogDescription>
+        <DialogDescription>¿Seguro que quieres eliminar esta campaña?</DialogDescription>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
           <Button variant="danger" onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}><Trash2 size={14} /> Eliminar</Button>
@@ -214,7 +205,7 @@ export default function CampaignsPage() {
             <button
               type="button"
               onClick={() => setNoWebsiteOnly((current) => !current)}
-              className={`mb-2 rounded-lg border px-3 py-1.5 text-[11px] font-medium transition-colors ${noWebsiteOnly ? "border-accent/40 bg-accent/10 text-accent" : "border-border/40 bg-input text-ink-muted hover:border-border hover:text-ink"}`}
+              className={`mb-2 rounded-lg border px-3 py-1.5 text-[12.5px] transition-colors ${noWebsiteOnly ? "border-border-light bg-white/[0.08] text-ink" : "border-border text-ink-muted hover:border-border-light hover:text-ink"}`}
             >
               Sin sitio web
             </button>
@@ -222,7 +213,7 @@ export default function CampaignsPage() {
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-border/40 p-3">
                 {selectableLeads.map((lead) => (
                   <label key={lead.id} className="flex cursor-pointer items-center gap-2 text-[12px] text-ink">
-                    <input type="checkbox" checked={selectedLeadIds.has(lead.id)} onChange={() => setSelectedLeadIds((current) => {
+                    <input type="checkbox" className="accent-[#39ff88]" checked={selectedLeadIds.has(lead.id)} onChange={() => setSelectedLeadIds((current) => {
                       const next = new Set(current);
                       next.has(lead.id) ? next.delete(lead.id) : next.add(lead.id);
                       return next;
@@ -236,7 +227,7 @@ export default function CampaignsPage() {
         </div>
         <div className="mt-6 flex justify-end gap-2">
           <Button variant="secondary" onClick={() => setCreateOpen(false)}>Cancelar</Button>
-          <Button onClick={handleCreateCampaign} disabled={creating || !selectedTemplateId || selectedLeadIds.size === 0} className="bg-accent hover:bg-accent-hover text-white">
+          <Button onClick={handleCreateCampaign} disabled={creating || !selectedTemplateId || selectedLeadIds.size === 0} className="bg-accent hover:bg-accent-hover text-accent-ink">
             {creating ? <RefreshCw size={14} className="animate-spin" /> : <Megaphone size={14} />}
             {creating ? "Creando..." : "Crear campaña"}
           </Button>

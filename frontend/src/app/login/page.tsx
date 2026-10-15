@@ -61,7 +61,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full flex overflow-hidden bg-[#0d0f1a]">
+    <div className="theme-classic relative min-h-screen w-full flex overflow-hidden bg-[#0d0f1a]">
       {/* Background spans the entire page so it doesn't cut off behind the modal */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_20%_45%,rgba(130,90,255,0.35),transparent_65%)]" />
