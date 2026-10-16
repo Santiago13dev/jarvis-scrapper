@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Clock, Loader2, MapPin, Play, Plus, Sparkles, Target, Trash2, X } from "lucide-react";
+import { Bot, Check, ChevronDown, Clock, Loader2, MapPin, Play, Plus, Sparkles, Target, Trash2, X } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { Flag } from "@/components/ui/flag";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
-import type { AutopilotRule, Country } from "@/types/api";
+import type { AutopilotRule, AutopilotSearchProgress, Country } from "@/types/api";
 
 const KEYWORD_SUGGESTIONS: Record<string, string[]> = {
   es: ["restaurantes", "clínicas dentales", "gimnasios", "inmobiliarias", "tiendas de ropa", "abogados", "spa", "veterinarias", "talleres mecánicos", "centros de estética"],
@@ -21,9 +21,9 @@ const FREQUENCIES = [
 ];
 
 const DEPTHS = [
-  { value: 1, label: "Rápida", hint: "~20 negocios por búsqueda" },
-  { value: 2, label: "Normal", hint: "~40 negocios" },
-  { value: 3, label: "Profunda", hint: "~60+ negocios, más lenta" },
+  { value: 1, label: "Rápida", hint: "3–10 min por búsqueda" },
+  { value: 2, label: "Normal", hint: "8–15 min por búsqueda" },
+  { value: 3, label: "Profunda", hint: "15–25 min, más resultados" },
 ];
 
 function ChipInput({ values, onChange, suggestions, placeholder, icon }: { values: string[]; onChange: (values: string[]) => void; suggestions: string[]; placeholder: string; icon: React.ReactNode }) {
@@ -61,10 +61,94 @@ function ChipInput({ values, onChange, suggestions, placeholder, icon }: { value
   );
 }
 
+function formatDuration(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  if (minutes >= 60) return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  return minutes ? `${minutes} min ${String(rest).padStart(2, "0")} s` : `${rest} s`;
+}
+
+/** Segundos transcurridos desde una fecha ISO, actualizado cada segundo. */
+function useElapsed(since: string | null | undefined): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!since) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [since]);
+  return since ? Math.max(0, Math.round((now - new Date(since).getTime()) / 1000)) : 0;
+}
+
+function SearchRow({ item, active }: { item: AutopilotSearchProgress; active: boolean }) {
+  const elapsed = useElapsed(active ? item.started_at : null);
+  const duration = item.started_at && item.finished_at
+    ? Math.round((new Date(item.finished_at).getTime() - new Date(item.started_at).getTime()) / 1000)
+    : null;
+  return (
+    <li className={cn("flex items-center gap-3 rounded-lg px-3 py-2 text-[13px]", active && "bg-white/[0.04]")}>
+      <span className={cn("flex h-5 w-5 shrink-0 items-center justify-center rounded-full",
+        item.status === "done" ? "bg-accent text-accent-ink" : item.status === "failed" ? "bg-red/15 text-red" : item.status === "running" ? "text-violet" : "border border-border-light")}>
+        {item.status === "done" ? <Check size={12} strokeWidth={3} /> : item.status === "failed" ? <X size={12} strokeWidth={3} /> : item.status === "running" ? <Loader2 size={14} className="animate-spin" /> : null}
+      </span>
+      <span className={cn("min-w-0 flex-1 truncate", item.status === "pending" ? "text-ink-dim" : "text-ink")}>
+        <span className="capitalize">{item.keyword}</span> <span className="text-ink-dim">· {item.location}</span>
+      </span>
+      <span className="shrink-0 text-right text-[12px] tabular-nums text-ink-dim">
+        {item.status === "running" && `buscando · ${formatDuration(elapsed)}`}
+        {item.status === "done" && (
+          <>
+            <span className="font-medium text-ink">{item.new} nuevos</span>
+            {item.duplicates ? ` · ${item.duplicates} repetidos` : ""}
+            {duration !== null ? ` · ${formatDuration(duration)}` : ""}
+          </>
+        )}
+        {item.status === "failed" && <span className="text-red" title={item.error ?? undefined}>falló</span>}
+        {item.status === "pending" && "en cola"}
+      </span>
+    </li>
+  );
+}
+
+function RunProgress({ progress }: { progress: NonNullable<AutopilotRule["progress"]> }) {
+  const total = progress.searches.length;
+  const finished = progress.searches.filter((item) => item.status === "done" || item.status === "failed").length;
+  const elapsed = useElapsed(progress.started_at);
+  const enriching = progress.stage === "enriching";
+  // La auditoría y redacción cuentan como un paso más al final
+  const percent = Math.round(((finished + (enriching ? 0.5 : 0)) / (total + 1)) * 100);
+  const current = progress.searches[progress.current];
+  return (
+    <div className="mt-5 rounded-xl border border-violet/30 bg-violet/[0.06] p-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-[13.5px] font-semibold text-ink">
+          {enriching ? "Revisando webs y escribiendo mensajes" : `Búsqueda ${Math.min(progress.current + 1, total)} de ${total}`}
+          {!enriching && current && <span className="font-normal text-ink-muted"> · <span className="capitalize">{current.keyword}</span> en {current.location}</span>}
+        </p>
+        <span className="shrink-0 text-[12px] tabular-nums text-ink-dim">{formatDuration(elapsed)}</span>
+      </div>
+      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+        <div className="h-full rounded-full bg-violet transition-all duration-700" style={{ width: `${Math.max(4, percent)}%` }} />
+      </div>
+      <p className="mt-2 text-[12.5px] text-ink-muted">
+        <span className="font-semibold text-ink">{progress.new_leads}</span> negocios nuevos hasta ahora · {finished} de {total} búsquedas listas
+        {enriching && " · auditando y puntuando"}
+      </p>
+      <ol className="mt-3 space-y-0.5">
+        {progress.searches.map((item, index) => <SearchRow key={`${item.keyword}-${item.location}`} item={item} active={index === progress.current && !enriching} />)}
+      </ol>
+      <p className="mt-3 text-[11.5px] text-ink-dim">Cada búsqueda tarda de 5 a 15 minutos (hasta 25 en ciudades grandes) porque Jarvis abre la ficha y la web de cada negocio para sacar su correo. Si el computador se suspende, la búsqueda se pausa.</p>
+    </div>
+  );
+}
+
 function RuleCard({ rule, onToggle, onRun, onDelete }: { rule: AutopilotRule; onToggle: () => void; onRun: () => void; onDelete: () => void }) {
   const result = rule.last_result;
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const lastDuration = result?.started_at && result.finished_at
+    ? Math.round((new Date(result.finished_at).getTime() - new Date(result.started_at).getTime()) / 1000)
+    : null;
   return (
-    <article className={cn("flex flex-col rounded-2xl border bg-card p-6 transition-colors", rule.is_running ? "border-violet/50" : "border-border", !rule.is_active && "opacity-60")}>
+    <article className={cn("flex flex-col rounded-2xl border bg-card p-6 transition-colors", rule.is_running ? "border-violet/50 md:col-span-2" : "border-border", !rule.is_active && !rule.is_running && "opacity-60")}>
       <header className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="flex items-center gap-2 truncate text-[15px] font-semibold text-ink">
@@ -82,14 +166,24 @@ function RuleCard({ rule, onToggle, onRun, onDelete }: { rule: AutopilotRule; on
         </button>
       </header>
 
-      <div className="mt-5 space-y-2">
-        <div className="flex flex-wrap gap-1.5">
-          {rule.keywords.map((keyword) => <span key={keyword} className="rounded-md bg-white/[0.06] px-2 py-1 text-[12px] text-ink">{keyword}</span>)}
+      {rule.is_running && rule.progress ? (
+        <RunProgress progress={rule.progress} />
+      ) : (
+        <div className="mt-5 space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {rule.keywords.map((keyword) => <span key={keyword} className="rounded-md bg-white/[0.06] px-2 py-1 text-[12px] text-ink">{keyword}</span>)}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {rule.locations.map((location) => <span key={location} className="flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1 text-[12px] text-ink-muted"><MapPin size={11} />{location}</span>)}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          {rule.locations.map((location) => <span key={location} className="flex items-center gap-1 rounded-md bg-white/[0.06] px-2 py-1 text-[12px] text-ink-muted"><MapPin size={11} />{location}</span>)}
-        </div>
-      </div>
+      )}
+
+      {rule.is_running && !rule.progress && (
+        <p className="mt-5 flex items-center gap-2 rounded-xl border border-violet/30 bg-violet/[0.06] p-4 text-[13px] text-ink-muted">
+          <Loader2 size={15} className="animate-spin text-violet" /> Buscando clientes… el detalle del avance aparecerá en la próxima ejecución.
+        </p>
+      )}
 
       <div className="mt-5 grid grid-cols-3 gap-4 border-t border-border pt-5">
         <div>
@@ -106,12 +200,26 @@ function RuleCard({ rule, onToggle, onRun, onDelete }: { rule: AutopilotRule; on
         </div>
       </div>
 
-      {!!result?.errors?.length && <p className="mt-2 text-[11px] text-red">{result.errors.length} búsquedas fallaron la última vez.</p>}
+      {result && !rule.is_running && (
+        <div className="mt-4 text-[12.5px] text-ink-dim">
+          <button onClick={() => setShowBreakdown(!showBreakdown)} className="flex items-center gap-1 hover:text-ink">
+            Última ejecución: {new Date(result.finished_at).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+            {lastDuration !== null && ` · ${formatDuration(lastDuration)}`}
+            {!!result.errors?.length && <span className="text-red"> · {result.errors.length} con error</span>}
+            {result.breakdown && <ChevronDown size={13} className={cn("transition-transform", showBreakdown && "rotate-180")} />}
+          </button>
+          {showBreakdown && result.breakdown && (
+            <ol className="mt-2 space-y-0.5">
+              {result.breakdown.map((item) => <SearchRow key={`${item.keyword}-${item.location}`} item={item} active={false} />)}
+            </ol>
+          )}
+        </div>
+      )}
 
       <footer className="mt-auto flex items-center justify-between gap-2 pt-5">
         <span className="flex items-center gap-1.5 text-[12.5px] text-ink-muted">
           {rule.is_running ? (
-            <><Loader2 size={12} className="animate-spin text-violet" /> Buscando clientes ahora…</>
+            <><Loader2 size={12} className="animate-spin text-violet" /> En curso</>
           ) : rule.is_active && rule.next_run_at ? (
             <><Clock size={12} className="shrink-0 text-violet" /> Próxima: {new Date(rule.next_run_at).toLocaleString("es-CO", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</>
           ) : (
@@ -119,7 +227,7 @@ function RuleCard({ rule, onToggle, onRun, onDelete }: { rule: AutopilotRule; on
           )}
         </span>
         <div className="flex gap-1.5">
-          <button onClick={onDelete} title="Eliminar" className="rounded-lg p-2 text-ink-dim transition-colors hover:bg-white/[0.05] hover:text-red"><Trash2 size={15} /></button>
+          <button onClick={onDelete} disabled={rule.is_running} title={rule.is_running ? "No se puede eliminar mientras busca" : "Eliminar"} className="rounded-lg p-2 text-ink-dim transition-colors hover:bg-white/[0.05] hover:text-red disabled:opacity-30"><Trash2 size={15} /></button>
           <button onClick={onRun} disabled={rule.is_running} className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-border px-3 py-2 text-[13px] font-medium text-ink transition-colors hover:border-border-light hover:bg-white/[0.03] disabled:opacity-40">
             <Play size={13} /> Ejecutar ahora
           </button>
@@ -149,9 +257,15 @@ export default function AutopilotPage() {
     if (!base) return;
     load();
     api.get<Country[]>(`${base}/countries`).then(setCountries).catch(() => undefined);
-    const timer = window.setInterval(load, 15_000);
-    return () => window.clearInterval(timer);
   }, [base, load]);
+
+  // Mientras alguna regla busca, se refresca cada 5 s para mostrar el avance en vivo
+  const anyRunning = !!rules?.some((rule) => rule.is_running);
+  useEffect(() => {
+    if (!base) return;
+    const timer = window.setInterval(load, anyRunning ? 5_000 : 15_000);
+    return () => window.clearInterval(timer);
+  }, [base, load, anyRunning]);
 
   useEffect(() => { if (rules && rules.length === 0) setCreating(true); }, [rules]);
 

@@ -68,6 +68,7 @@ class AutopilotRuleResponse(BaseModel):
     last_run_at: datetime | None
     next_run_at: datetime | None
     last_result: dict | None
+    progress: dict | None
     total_leads_found: int
     created_at: datetime
 

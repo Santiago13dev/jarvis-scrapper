@@ -16,9 +16,9 @@ const EXAMPLES: Record<string, string[]> = {
 };
 
 const DEPTHS = [
-  { value: 1, label: "Rápida", hint: "~20 negocios · 1–2 min", maxResults: 40 },
-  { value: 2, label: "Normal", hint: "~40 negocios · 2–4 min", maxResults: 120 },
-  { value: 3, label: "Profunda", hint: "60+ negocios · 4–8 min", maxResults: 300 },
+  { value: 1, label: "Rápida", hint: "Hasta 40 negocios · 3–10 min", maxResults: 40 },
+  { value: 2, label: "Normal", hint: "Hasta 120 negocios · 8–15 min", maxResults: 120 },
+  { value: 3, label: "Profunda", hint: "Hasta 300 negocios · 15–25 min", maxResults: 300 },
 ];
 
 // Etapas reales de la búsqueda en segundo plano (lead_import_jobs.stage)

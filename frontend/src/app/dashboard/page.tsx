@@ -339,7 +339,30 @@ export default function DashboardPage() {
           </Panel>
 
           <Panel title="Piloto automático" description="Búsquedas que corren solas" action={<PanelLink href="/autopilot">Configurar</PanelLink>}>
-            {data && data.autopilot.active_rules > 0 ? (
+            {data?.autopilot.running ? (
+              <Link href="/autopilot" className="block">
+                <div className="flex items-center gap-3">
+                  <Loader2 size={17} className="shrink-0 animate-spin text-violet" />
+                  <p className="min-w-0 text-[14px] font-medium text-ink">
+                    {data.autopilot.running.stage === "enriching"
+                      ? "Revisando webs y escribiendo mensajes"
+                      : `Búsqueda ${Math.min(data.autopilot.running.current + 1, data.autopilot.running.total)} de ${data.autopilot.running.total}`}
+                  </p>
+                </div>
+                {data.autopilot.running.keyword && (
+                  <p className="mt-1 truncate pl-7 text-[12.5px] text-ink-muted">
+                    <span className="capitalize">{data.autopilot.running.keyword}</span> en {data.autopilot.running.location}
+                  </p>
+                )}
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                  <div className="h-full rounded-full bg-violet transition-all duration-700"
+                    style={{ width: `${Math.max(4, ((data.autopilot.running.current + (data.autopilot.running.stage === "enriching" ? 0.5 : 0)) / (data.autopilot.running.total + 1)) * 100)}%` }} />
+                </div>
+                <p className="mt-2 text-[12.5px] text-ink-dim">
+                  <span className="font-semibold text-ink">{data.autopilot.running.new_leads}</span> negocios nuevos hasta ahora · {data.autopilot.running.rule_name}
+                </p>
+              </Link>
+            ) : data && data.autopilot.active_rules > 0 ? (
               <div className="flex items-start gap-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.05]">
                   {data.autopilot.running_rules ? <Loader2 size={17} className="animate-spin text-violet" /> : <Bot size={17} className="text-violet" />}

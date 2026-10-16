@@ -20,6 +20,7 @@ from app.infrastructure.dependencies import get_statistics_repository, require_w
 
 from .schemas import (
     ActivityItem,
+    AutopilotRun,
     AutopilotStatus,
     DailyCount,
     DashboardOverviewResponse,
@@ -146,6 +147,7 @@ async def get_dashboard_overview(
             next_run_at=await session.scalar(
                 select(func.min(AutopilotRuleModel.next_run_at)).where(rules, AutopilotRuleModel.is_active.is_(True))
             ),
+            running=await _running_autopilot(session, workspace_id),
         ),
     )
 
@@ -191,3 +193,30 @@ async def _recent_activity(session: AsyncSession, workspace_id: str, limit: int 
         *(ActivityItem(kind="replied", at=at, count=1, detail=name, country=country) for at, name, country in replies.all()),
     ]
     return sorted(items, key=lambda item: item.at, reverse=True)[:limit]
+
+
+async def _running_autopilot(session: AsyncSession, workspace_id: str) -> AutopilotRun | None:
+    """Avance de la búsqueda automática en curso, para mostrarlo en Inicio."""
+    rule = (
+        await session.execute(
+            select(AutopilotRuleModel)
+            .where(AutopilotRuleModel.workspace_id == workspace_id, AutopilotRuleModel.is_running.is_(True))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if rule is None or not rule.progress:
+        return None
+    progress = rule.progress
+    searches = progress.get("searches") or []
+    current = min(progress.get("current", 0), max(len(searches) - 1, 0))
+    active = searches[current] if searches and progress.get("stage") == "searching" else None
+    return AutopilotRun(
+        rule_name=rule.name,
+        current=progress.get("current", 0),
+        total=len(searches),
+        stage=progress.get("stage", "searching"),
+        keyword=active["keyword"] if active else None,
+        location=active["location"] if active else None,
+        new_leads=progress.get("new_leads", 0),
+        started_at=progress.get("started_at"),
+    )

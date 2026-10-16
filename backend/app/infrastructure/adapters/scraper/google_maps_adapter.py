@@ -25,8 +25,10 @@ from app.infrastructure.config.config import get_settings
 logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = 3  # seconds between status checks
-MAX_POLL_ATTEMPTS = 300  # ~15 minutes max wait (la extracción de emails visita cada sitio web)
-JOB_MAX_TIME_SECONDS = 900
+JOB_MAX_TIME_SECONDS = 900  # el scraper se detiene solo a los 15 min y entrega lo que lleva
+# Se espera más que JOB_MAX_TIME_SECONDS: si Jarvis se rindiera a la vez que el scraper termina,
+# una búsqueda completa quedaría marcada como fallida.
+MAX_POLL_ATTEMPTS = 500  # ~25 minutos
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 
 EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")

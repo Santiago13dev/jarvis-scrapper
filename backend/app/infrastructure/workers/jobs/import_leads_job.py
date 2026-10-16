@@ -40,7 +40,7 @@ async def _update(job_id: str, **values) -> None:
         await session.commit()
 
 
-def _friendly_error(exc: Exception) -> str:
+def friendly_scraper_error(exc: Exception) -> str:
     if isinstance(exc, httpx.ConnectError):
         return "No se pudo conectar con el buscador de Google Maps. Revisa que el servicio esté encendido."
     if isinstance(exc, httpx.HTTPError):
@@ -104,7 +104,7 @@ async def import_leads_job(ctx, payload: dict) -> dict:
             await session.commit()
     except Exception as exc:  # noqa: BLE001 — se informa a la persona y se registra el detalle
         logger.exception("Import job %s failed", job_id)
-        await _update(job_id, status="failed", stage=None, error=_friendly_error(exc), finished_at=datetime.now(timezone.utc))
+        await _update(job_id, status="failed", stage=None, error=friendly_scraper_error(exc), finished_at=datetime.now(timezone.utc))
         return {"job_id": job_id, "status": "failed"}
 
     imported = list(result.imported)

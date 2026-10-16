@@ -192,6 +192,18 @@ export interface Country {
   cities: string[];
 }
 
+export interface AutopilotSearchProgress {
+  keyword: string;
+  location: string;
+  status: "pending" | "running" | "done" | "failed";
+  new: number;
+  duplicates: number;
+  closed: number;
+  error: string | null;
+  started_at?: string;
+  finished_at?: string;
+}
+
 export interface AutopilotRule {
   id: string;
   name: string;
@@ -205,7 +217,24 @@ export interface AutopilotRule {
   is_running: boolean;
   last_run_at: string | null;
   next_run_at: string | null;
-  last_result: { new_leads: number; drafted: number; searches: number; errors: string[]; finished_at: string } | null;
+  last_result: {
+    new_leads: number;
+    drafted: number;
+    searches: number;
+    errors: string[];
+    started_at?: string;
+    finished_at: string;
+    breakdown?: AutopilotSearchProgress[];
+  } | null;
+  /** Avance de la ejecución en curso; null cuando la regla no está corriendo. */
+  progress: {
+    started_at: string;
+    stage: "searching" | "enriching";
+    current: number;
+    new_leads: number;
+    drafted: number;
+    searches: AutopilotSearchProgress[];
+  } | null;
   total_leads_found: number;
   created_at: string;
 }
@@ -253,7 +282,21 @@ export interface DashboardOverview {
   by_country: Record<string, number>;
   leads_per_day: { date: string; count: number }[];
   top_opportunities: { id: string; name: string; category: string | null; country: string | null; score: number; service: string | null; has_whatsapp: boolean }[];
-  autopilot: { active_rules: number; running_rules: number; next_run_at: string | null };
+  autopilot: {
+    active_rules: number;
+    running_rules: number;
+    next_run_at: string | null;
+    running: {
+      rule_name: string;
+      current: number;
+      total: number;
+      stage: "searching" | "enriching";
+      keyword: string | null;
+      location: string | null;
+      new_leads: number;
+      started_at: string | null;
+    } | null;
+  };
   activity: { kind: "found" | "drafted" | "sent" | "replied"; at: string; count: number; detail: string | null; country: string | null }[];
   last_14_days: { leads: number; drafted: number; sent: number; replies: number };
 }

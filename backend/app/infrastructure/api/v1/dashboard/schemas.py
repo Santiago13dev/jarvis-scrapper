@@ -45,10 +45,22 @@ class PeriodTotals(BaseModel):
     replies: int
 
 
+class AutopilotRun(BaseModel):
+    rule_name: str
+    current: int
+    total: int
+    stage: str
+    keyword: str | None
+    location: str | None
+    new_leads: int
+    started_at: str | None
+
+
 class AutopilotStatus(BaseModel):
     active_rules: int
     running_rules: int
     next_run_at: datetime | None
+    running: AutopilotRun | None = None
 
 
 class DashboardOverviewResponse(BaseModel):

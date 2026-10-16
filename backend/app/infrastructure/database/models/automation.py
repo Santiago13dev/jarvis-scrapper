@@ -34,6 +34,8 @@ class AutopilotRuleModel(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Avance de la ejecución en curso (búsqueda actual, etapa, negocios encontrados); None si no corre
+    progress: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     total_leads_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

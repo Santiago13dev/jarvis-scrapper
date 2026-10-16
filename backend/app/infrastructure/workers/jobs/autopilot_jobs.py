@@ -19,6 +19,7 @@ from app.infrastructure.database.models.automation import AutopilotRuleModel
 from app.infrastructure.database.session import AsyncSessionLocal
 from app.infrastructure.repositories.postgres_lead_repository import PostgresLeadRepository
 from app.infrastructure.workers.jobs.enrich_imported_leads_job import enrich_imported_leads
+from app.infrastructure.workers.jobs.import_leads_job import friendly_scraper_error
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,19 @@ async def autopilot_tick(ctx) -> dict:
     return {"enqueued": len(due)}
 
 
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+async def _save_progress(rule_id: str, progress: dict) -> None:
+    """Guarda el avance para que la interfaz muestre en qué búsqueda va y cuánto ha encontrado."""
+    async with AsyncSessionLocal() as session:
+        rule = await session.get(AutopilotRuleModel, rule_id)
+        if rule is not None:
+            rule.progress = dict(progress, searches=[dict(item) for item in progress["searches"]])
+            await session.commit()
+
+
 async def run_autopilot_rule(ctx, payload: dict) -> dict:
     rule_id = payload["rule_id"]
     async with AsyncSessionLocal() as session:
@@ -48,15 +62,31 @@ async def run_autopilot_rule(ctx, payload: dict) -> dict:
         if rule is None or rule.is_running:
             return {"rule_id": rule_id, "status": "skipped"}
         rule.is_running = True
-        await session.commit()
         workspace_id, country, depth, min_score = rule.workspace_id, rule.country, rule.depth, rule.min_score
         searches = [(keyword, location) for keyword in rule.keywords for location in rule.locations]
+        progress = {
+            "started_at": _now_iso(),
+            "stage": "searching",
+            "current": 0,
+            "new_leads": 0,
+            "drafted": 0,
+            "searches": [
+                {"keyword": keyword, "location": location, "status": "pending", "new": 0, "duplicates": 0, "closed": 0, "error": None}
+                for keyword, location in searches
+            ],
+        }
+        rule.progress = progress
+        await session.commit()
 
     new_lead_ids: list[str] = []
     errors: list[str] = []
     drafted = 0
     try:
-        for keyword, location in searches:
+        for index, (keyword, location) in enumerate(searches):
+            item = progress["searches"][index]
+            item.update(status="running", started_at=_now_iso())
+            progress["current"] = index
+            await _save_progress(rule_id, progress)
             try:
                 async with AsyncSessionLocal() as session:
                     result = await ImportLeadsFromScraperUseCase(
@@ -73,11 +103,23 @@ async def run_autopilot_rule(ctx, payload: dict) -> dict:
                     )
                     await session.commit()
                     new_lead_ids.extend(lead.id for lead in result.imported)
+                item.update(
+                    status="done",
+                    new=len(result.imported),
+                    duplicates=result.skipped_duplicates,
+                    closed=result.skipped_closed,
+                    finished_at=_now_iso(),
+                )
             except Exception as exc:
                 logger.exception("Autopilot %s: falló la búsqueda '%s' en '%s'", rule_id, keyword, location)
                 errors.append(f"{keyword} / {location}: {exc}"[:200])
+                item.update(status="failed", error=friendly_scraper_error(exc), finished_at=_now_iso())
+            progress["new_leads"] = len(new_lead_ids)
+            await _save_progress(rule_id, progress)
 
         if new_lead_ids:
+            progress.update(stage="enriching", current=len(searches))
+            await _save_progress(rule_id, progress)
             enrichment = await enrich_imported_leads(
                 ctx, {"workspace_id": workspace_id, "lead_ids": new_lead_ids, "min_score": min_score}
             )
@@ -88,6 +130,7 @@ async def run_autopilot_rule(ctx, payload: dict) -> dict:
             if rule is not None:
                 now = datetime.now(timezone.utc)
                 rule.is_running = False
+                rule.progress = None
                 rule.last_run_at = now
                 rule.next_run_at = now + timedelta(hours=rule.frequency_hours)
                 rule.total_leads_found = (rule.total_leads_found or 0) + len(new_lead_ids)
@@ -96,7 +139,9 @@ async def run_autopilot_rule(ctx, payload: dict) -> dict:
                     "drafted": drafted,
                     "searches": len(searches),
                     "errors": errors,
+                    "started_at": progress["started_at"],
                     "finished_at": now.isoformat(),
+                    "breakdown": progress["searches"],
                 }
                 await session.commit()
 
@@ -107,6 +152,6 @@ async def reset_stuck_autopilot_rules(ctx) -> None:
     """Al arrancar el worker ninguna regla puede estar corriendo de verdad."""
     async with AsyncSessionLocal() as session:
         await session.execute(
-            update(AutopilotRuleModel).where(AutopilotRuleModel.is_running.is_(True)).values(is_running=False)
+            update(AutopilotRuleModel).where(AutopilotRuleModel.is_running.is_(True)).values(is_running=False, progress=None)
         )
         await session.commit()
