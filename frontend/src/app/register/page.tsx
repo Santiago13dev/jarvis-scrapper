@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Logo } from "@/components/layout/logo";
+import { JarvisOrb } from "@/components/ui/jarvis-orb";
 import { api, ApiError } from "@/lib/api-client";
 import { ArrowRight, CheckCircle } from "lucide-react";
 
@@ -49,26 +49,22 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-void px-4 relative overflow-hidden">
-      <div className="absolute inset-0" style={{
-        backgroundImage: `radial-gradient(ellipse 60% 50% at 70% 40%, rgba(130,90,255,0.08) 0%, transparent 60%),
-          radial-gradient(ellipse 50% 60% at 30% 60%, rgba(0,210,150,0.05) 0%, transparent 60%)`,
-      }} />
+    <div className="jarvis-backdrop relative flex min-h-screen items-center justify-center overflow-hidden bg-void px-4 py-10">
 
       <div className="relative w-full max-w-[400px]">
-        <div className="rounded-2xl border border-border/40 bg-card p-8">
+        <div className="neon-ring rounded-3xl border border-accent/20 bg-card/80 p-8 backdrop-blur-xl">
           <div className="mb-6 flex flex-col items-center gap-4">
-            <Logo className="h-12 w-12" />
+            <JarvisOrb className="w-20" state={loading ? "thinking" : "idle"} />
             <div className="text-center">
-              <h1 className="font-display text-xl font-bold text-ink">Crear cuenta</h1>
-              <p className="text-[13px] text-ink-muted mt-1">Registra tu agencia en JarvisIA</p>
+              <h1 className="font-display text-xl font-bold text-ink">Hola, soy <span className="text-accent neon-text">Jarvis</span></h1>
+              <p className="text-[13px] text-ink-muted mt-1">Crea tu cuenta y empecemos a conseguir clientes</p>
             </div>
           </div>
 
           <div className="mb-6 space-y-2">
-            {["Scraping ilimitado de Google Maps", "Scoring IA incluido", "Campañas de WhatsApp automatizadas"].map((b) => (
+            {["Clientes en Colombia, España y Estados Unidos", "Puntaje de oportunidad por servicio", "Mensajes personalizados que tú apruebas"].map((b) => (
               <div key={b} className="flex items-center gap-2 text-[12px] text-ink-muted">
-                <CheckCircle size={12} className="text-teal shrink-0" />
+                <CheckCircle size={12} className="text-accent shrink-0" />
                 <span>{b}</span>
               </div>
             ))}
@@ -104,7 +100,7 @@ export default function RegisterPage() {
               <div className="rounded-lg border border-red/30 bg-red/10 px-4 py-3 text-[13px] text-red">{error}</div>
             )}
 
-            <Button type="submit" disabled={loading} className="w-full bg-accent hover:bg-accent-hover text-white py-2.5">
+            <Button type="submit" disabled={loading} className="w-full bg-accent hover:bg-accent-hover text-accent-ink py-2.5">
               {loading ? "Creando..." : "Crear cuenta"}
             </Button>
           </form>

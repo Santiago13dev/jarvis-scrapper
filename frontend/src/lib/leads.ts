@@ -1,3 +1,4 @@
+import { COUNTRY_META, SERVICE_META } from "@/lib/sections";
 import { api } from "@/lib/api-client";
 import type { Lead, LeadStatus, OutreachItem } from "@/types/api";
 
@@ -78,11 +79,12 @@ function csvCell(value: unknown): string {
 /** Descarga un CSV que Excel abre con tildes correctas (BOM UTF-8 y separador «;»). */
 export function downloadLeadsCsv(leads: Lead[], fileName = `leads-${new Date().toISOString().slice(0, 10)}.csv`) {
   const header = [
-    "Negocio", "Potencial", "Categoría", "WhatsApp", "Teléfono", "Correo", "Sitio web", "Instagram",
+    "Negocio", "País", "Potencial", "Servicio recomendado", "Categoría", "WhatsApp", "Teléfono", "Correo", "Sitio web", "Instagram",
     "Facebook", "Calificación", "Reseñas", "Dirección", "Estado", "No contactar",
   ];
   const rows = leads.map((lead) => [
-    lead.name, lead.lead_score ?? "", lead.category ?? "", formatPhone(lead.whatsapp), lead.phone ?? "",
+    lead.name, lead.country ? COUNTRY_META[lead.country]?.name ?? lead.country : "", lead.lead_score ?? "",
+    lead.score_niche ? SERVICE_META[lead.score_niche]?.label ?? "" : "", lead.category ?? "", formatPhone(lead.whatsapp), lead.phone ?? "",
     lead.email ?? "", lead.website ?? "", lead.instagram ?? "", lead.facebook ?? "",
     lead.rating ?? "", lead.reviews_count ?? "", lead.address ?? "", statusInfo(lead.status).label,
     lead.do_not_contact ? "Sí" : "No",

@@ -86,6 +86,7 @@ class LeadModel(Base):
     facebook: Mapped[str | None] = mapped_column(String(255), nullable=True)
     listing_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
     reviews_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     photos_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -230,6 +231,7 @@ class LeadImportJobModel(Base):
     max_results: Mapped[int] = mapped_column(Integer, nullable=False)
     depth: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     extract_emails: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    country: Mapped[str] = mapped_column(String(2), nullable=False, default="CO", server_default="CO")
     # queued → running → done | failed
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", server_default="queued")
     # searching → importing → auditing (solo informativo para la interfaz)

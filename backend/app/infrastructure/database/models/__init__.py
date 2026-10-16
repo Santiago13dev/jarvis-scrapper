@@ -19,6 +19,7 @@ from .lead import (
 from .campaign import CampaignModel, campaign_leads_table
 from .conversation import ConversationModel, MessageModel
 from .template import MessageTemplateModel, DemoPageTemplateModel
+from .automation import AutopilotRuleModel, OutreachDraftModel
 
 __all__ = [
     "Base",
@@ -39,4 +40,6 @@ __all__ = [
     "MessageModel",
     "MessageTemplateModel",
     "DemoPageTemplateModel",
+    "AutopilotRuleModel",
+    "OutreachDraftModel",
 ]

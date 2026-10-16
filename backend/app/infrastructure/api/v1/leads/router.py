@@ -7,6 +7,7 @@ que el usuario autenticado tenga membership en ese workspace antes de continuar.
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
@@ -63,6 +64,7 @@ from .schemas import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 WorkspaceId = Annotated[str, Depends(require_workspace_access)]
 
@@ -80,6 +82,7 @@ def _to_response(lead: Lead) -> LeadResponse:
         instagram=lead.instagram,
         facebook=lead.facebook,
         listing_url=lead.listing_url,
+        country=lead.country,
         category=lead.category,
         rating=lead.rating,
         reviews_count=lead.reviews_count,
@@ -221,6 +224,7 @@ async def import_leads(
     scraper_provider: Annotated[ScraperProvider, Depends(get_scraper_provider)],
     lead_repository: Annotated[LeadRepository, Depends(get_lead_repository)],
     event_bus: Annotated[EventBus, Depends(get_event_bus)],
+    queue: Annotated[QueueProvider, Depends(get_queue_provider)],
 ) -> ImportLeadsResponse:
     use_case = ImportLeadsFromScraperUseCase(scraper_provider, lead_repository, event_bus)
     try:
@@ -231,6 +235,8 @@ async def import_leads(
                 location=body.location,
                 max_results=body.max_results,
                 depth=body.depth,
+                extract_emails=body.extract_emails,
+                country=body.country,
             )
         )
     except httpx.ConnectError as exc:
@@ -252,9 +258,19 @@ async def import_leads(
             detail=str(exc),
         ) from exc
     await session.commit()
+    if result.imported:
+        try:
+            await queue.enqueue(
+                "enrich_imported_leads",
+                {"workspace_id": workspace_id, "lead_ids": [lead.id for lead in result.imported]},
+            )
+        except Exception:
+            # Sin Redis/worker los leads quedan importados; se pueden auditar y puntuar manualmente
+            logger.exception("No se pudo encolar el enriquecimiento de leads importados")
     return ImportLeadsResponse(
         imported_count=len(result.imported),
         skipped_duplicates=result.skipped_duplicates,
+        skipped_closed=result.skipped_closed,
         leads=[_to_response(lead) for lead in result.imported],
     )
 

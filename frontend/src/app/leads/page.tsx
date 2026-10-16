@@ -1,552 +1,486 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowUpDown, CheckCircle2, Download, Flame, Globe, Loader2, Megaphone, RefreshCw, Search, Send, Sparkles, Users, X,
+  Ban, CalendarClock, Check, ChevronDown, Download, LayoutGrid, List, Loader2, Megaphone, PenLine, RefreshCw, Search, Sparkles, X,
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
+import { LeadCard } from "@/components/leads/lead-card";
+import { LeadDrawer } from "@/components/leads/lead-drawer";
+import { statusMeta } from "@/components/leads/lead-meta";
+import { JarvisSearch } from "@/components/search/jarvis-search";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { ImportPanel } from "@/components/leads/import-panel";
-import { LeadDrawer } from "@/components/leads/lead-drawer";
-import { PresenceBadge, Rating, ScoreBadge, StatusBadge, WhatsAppIcon } from "@/components/leads/lead-badges";
+import { Flag } from "@/components/ui/flag";
+import { ScoreRing } from "@/components/ui/score-ring";
 import { useActiveWorkspace } from "@/hooks/use-active-workspace";
 import { api } from "@/lib/api-client";
-import { LEAD_STATUSES, cityOf, contactByWhatsApp, downloadLeadsCsv, presenceOf } from "@/lib/leads";
+import { downloadLeadsCsv } from "@/lib/leads";
+import { normalize } from "@/lib/search";
+import { COUNTRY_META, SERVICE_META } from "@/lib/sections";
 import { cn } from "@/lib/utils";
-import type { EnrichResult, ImportJob, Lead, LeadStatus, MessageTemplate } from "@/types/api";
+import type { FollowUp, Lead, LeadStatus, MessageTemplate, OutreachActionResult } from "@/types/api";
 
-type QuickFilter = "high" | "no_web" | "social" | "whatsapp" | "email" | "not_contacted";
-type Sort = "score" | "reviews" | "rating" | "recent";
+const PAGE_SIZE = 24;
+const VIEW_KEY = "jarvisia_leads_view";
 
-const QUICK_FILTERS: { id: QuickFilter; label: string }[] = [
-  { id: "high", label: "Potencial alto" },
-  { id: "no_web", label: "Sin página web" },
-  { id: "social", label: "Solo redes" },
-  { id: "whatsapp", label: "Con WhatsApp" },
-  { id: "email", label: "Con correo" },
-  { id: "not_contacted", label: "Sin contactar" },
+const QUICK_FILTERS: { key: string; label: string; test: (lead: Lead) => boolean }[] = [
+  { key: "alta", label: "Oportunidad alta", test: (l) => l.score_level === "high" },
+  { key: "whatsapp", label: "Con WhatsApp", test: (l) => !!l.whatsapp },
+  { key: "sinweb", label: "Sin página web", test: (l) => !l.website },
+  { key: "email", label: "Con email", test: (l) => !!l.email },
+  { key: "nuevos", label: "Sin contactar", test: (l) => l.status === "new" && !l.do_not_contact },
 ];
 
-const SORTS: { id: Sort; label: string }[] = [
-  { id: "score", label: "Mayor potencial" },
-  { id: "reviews", label: "Más reseñas" },
-  { id: "rating", label: "Mejor calificación" },
-  { id: "recent", label: "Más recientes" },
+const SORTS = [
+  { key: "score", label: "Mejor oportunidad" },
+  { key: "reviews", label: "Más reseñas" },
+  { key: "recent", label: "Más recientes" },
 ];
 
-const PER_PAGE = 25;
-
-function normalize(text: string) {
-  return text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-}
+type Notice = { tone: "ok" | "error"; text: string } | null;
 
 export default function LeadsPage() {
-  const { workspaceId, loading } = useActiveWorkspace();
+  const { workspaceId } = useActiveWorkspace();
   const [leads, setLeads] = useState<Lead[] | null>(null);
-  const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
-  const [query, setQuery] = useState("");
-  const [filters, setFilters] = useState<Set<QuickFilter>>(new Set());
-  const [status, setStatus] = useState<LeadStatus | "all">("all");
-  const [sort, setSort] = useState<Sort>("score");
-  const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [openLeadId, setOpenLeadId] = useState<string | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [enriching, setEnriching] = useState(false);
-  const [contactingId, setContactingId] = useState<string | null>(null);
-  const [campaignOpen, setCampaignOpen] = useState(false);
+  const [followUps, setFollowUps] = useState<FollowUp[]>([]);
+  const [notice, setNotice] = useState<Notice>(null);
 
-  const notify = useCallback((text: string, tone: "ok" | "error" = "ok") => {
-    setNotice({ text, tone });
-    window.setTimeout(() => setNotice((current) => (current?.text === text ? null : current)), 6000);
+  const [query, setQuery] = useState("");
+  const [quick, setQuick] = useState<Set<string>>(new Set());
+  const [service, setService] = useState<string | null>(null);
+  const [country, setCountry] = useState<string | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [sort, setSort] = useState("score");
+  const [view, setView] = useState<"cards" | "table">("cards");
+  const [visible, setVisible] = useState(PAGE_SIZE);
+  const [showSearch, setShowSearch] = useState(false);
+  const [autoFocusSearch, setAutoFocusSearch] = useState(false);
+
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [campaignFor, setCampaignFor] = useState<string[] | null>(null);
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [templateId, setTemplateId] = useState("");
+  const [campaignName, setCampaignName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const base = workspaceId ? `/workspaces/${workspaceId}` : null;
+
+  const loadLeads = useCallback(async () => {
+    if (!base) return;
+    try { setLeads(await api.get<Lead[]>(`${base}/leads?limit=5000`)); }
+    catch (err) { setNotice({ tone: "error", text: err instanceof Error ? err.message : "Error al cargar leads" }); }
+  }, [base]);
+
+  const loadFollowUps = useCallback(async () => {
+    if (!base) return;
+    try {
+      const result = await api.get<FollowUp[]>(`${base}/follow-ups`);
+      setFollowUps(result.sort((a, b) => new Date(a.next_follow_up_at).getTime() - new Date(b.next_follow_up_at).getTime()));
+    } catch { /* los seguimientos son secundarios en esta pantalla */ }
+  }, [base]);
+
+  useEffect(() => { loadLeads(); loadFollowUps(); }, [loadLeads, loadFollowUps]);
+
+  // Filtros que llegan desde Inicio (?filtro=alta, ?servicio=web, ?pais=ES, ?estado=won, ?lead=id, ?buscar=1)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const filter = params.get("filtro");
+    if (filter) setQuick(new Set([filter]));
+    setService(params.get("servicio"));
+    setCountry(params.get("pais"));
+    setStatus(params.get("estado"));
+    setOpenId(params.get("lead"));
+    if (params.get("buscar")) { setShowSearch(true); setAutoFocusSearch(true); }
+    try { const saved = window.localStorage.getItem(VIEW_KEY); if (saved === "table" || saved === "cards") setView(saved); } catch { /* sin almacenamiento */ }
   }, []);
 
-  const load = useCallback(async () => {
-    if (!workspaceId) return;
-    try {
-      setLeads(await api.get<Lead[]>(`/workspaces/${workspaceId}/leads?limit=5000`));
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "No se pudieron cargar los leads.", "error");
-    }
-  }, [workspaceId, notify]);
+  useEffect(() => { if (leads && leads.length === 0) setShowSearch(true); }, [leads]);
+  useEffect(() => { setVisible(PAGE_SIZE); }, [query, quick, service, country, status, sort]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const onImportFinished = useCallback(
-    (job: ImportJob) => {
-      if (job.status === "done") notify(`Listo: ${job.imported} negocios nuevos de «${job.keyword}».`);
-      else notify(job.error ?? "La búsqueda falló.", "error");
-      void load();
-    },
-    [load, notify],
-  );
-
-  async function enrichAll() {
-    if (!workspaceId) return;
-    setEnriching(true);
-    try {
-      const result = await api.post<EnrichResult>(`/workspaces/${workspaceId}/leads/enrich`);
-      notify(
-        `Datos actualizados: ${result.processed} leads, ${result.with_whatsapp} con WhatsApp, ${result.without_website} sin página web` +
-          (result.audits_queued ? `. Revisando ${result.audits_queued} páginas web en segundo plano.` : "."),
-      );
-      await load();
-    } catch (err) {
-      notify(err instanceof Error ? err.message : "No se pudieron actualizar los datos.", "error");
-    } finally {
-      setEnriching(false);
-    }
+  function changeView(next: "cards" | "table") {
+    setView(next);
+    try { window.localStorage.setItem(VIEW_KEY, next); } catch { /* sin almacenamiento */ }
   }
 
-  async function contact(lead: Lead) {
-    if (!workspaceId) return;
-    setContactingId(lead.id);
+  const filtered = useMemo(() => {
+    const q = normalize(query);
+    const list = (leads ?? []).filter((lead) =>
+      (!q || normalize(`${lead.name} ${lead.category ?? ""} ${lead.email ?? ""} ${lead.address ?? ""}`).includes(q))
+      && QUICK_FILTERS.every((item) => !quick.has(item.key) || item.test(lead))
+      && (!service || lead.score_niche === service)
+      && (!country || lead.country === country)
+      && (!status || lead.status === status),
+    );
+    const sorters: Record<string, (a: Lead, b: Lead) => number> = {
+      score: (a, b) => (b.lead_score ?? -1) - (a.lead_score ?? -1) || (b.reviews_count ?? 0) - (a.reviews_count ?? 0),
+      reviews: (a, b) => (b.reviews_count ?? 0) - (a.reviews_count ?? 0),
+      recent: (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    };
+    return list.sort(sorters[sort]);
+  }, [leads, query, quick, service, country, status, sort]);
+
+  const counts = useMemo(() => {
+    const all = leads ?? [];
+    return {
+      quick: Object.fromEntries(QUICK_FILTERS.map((item) => [item.key, all.filter(item.test).length])),
+      service: Object.fromEntries(Object.keys(SERVICE_META).map((key) => [key, all.filter((l) => l.score_niche === key).length])),
+      country: Object.fromEntries(Object.keys(COUNTRY_META).map((key) => [key, all.filter((l) => l.country === key).length])),
+    };
+  }, [leads]);
+
+  const shown = filtered.slice(0, visible);
+  const openLead = leads?.find((lead) => lead.id === openId) ?? null;
+  const hasFilters = !!(query || quick.size || service || country || status);
+
+  function toggle(id: string) {
+    setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  }
+
+  function clearFilters() {
+    setQuery(""); setQuick(new Set()); setService(null); setCountry(null); setStatus(null);
+    window.history.replaceState(null, "", "/leads");
+  }
+
+  async function updateLead(id: string, body: Record<string, unknown>) {
+    if (!base) return;
+    const lead = leads?.find((item) => item.id === id);
+    const updated = await api.patch<Lead>(`${base}/leads/${id}/status`, { status: lead?.status ?? "new", ...body });
+    setLeads((prev) => prev?.map((item) => (item.id === id ? updated : item)) ?? null);
+    loadFollowUps();
+  }
+
+  async function draft(ids: string[]): Promise<string> {
+    if (!base) return "";
+    const result = await api.post<OutreachActionResult>(`${base}/automation/outreach/draft`, { lead_ids: ids, min_score: 0 });
+    return result.affected
+      ? `✍️ Jarvis escribió ${result.affected} ${result.affected === 1 ? "mensaje" : "mensajes"}. Revísalos en "Aprobar mensajes".`
+      : "No se escribió ningún mensaje: necesitan WhatsApp, estar en etapa Nuevo y no tener ya un mensaje.";
+  }
+
+  async function bulkDraft() {
+    setBusy(true);
     try {
-      await contactByWhatsApp(workspaceId, lead.id);
-      notify(`WhatsApp abierto para ${lead.name}. Seguimiento agendado en 3 días.`);
-      await load();
+      setNotice({ tone: "ok", text: await draft(Array.from(selected)) });
+      setSelected(new Set());
     } catch (err) {
-      notify(err instanceof Error ? err.message : "No se pudo abrir WhatsApp.", "error");
-    } finally {
-      setContactingId(null);
-    }
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "No se pudieron escribir los mensajes" });
+    } finally { setBusy(false); }
   }
 
-  const all = useMemo(() => leads ?? [], [leads]);
-
-  const stats = useMemo(() => {
-    const high = all.filter((lead) => (lead.lead_score ?? 0) >= 70).length;
-    const noWeb = all.filter((lead) => !lead.website).length;
-    const whatsapp = all.filter((lead) => lead.whatsapp).length;
-    const contacted = all.filter((lead) => lead.contact_attempts > 0 || lead.status !== "new").length;
-    return { total: all.length, high, noWeb, whatsapp, contacted };
-  }, [all]);
-
-  const visible = useMemo(() => {
-    const needle = normalize(query.trim());
-    let list = all.filter((lead) => {
-      if (needle && !normalize(`${lead.name} ${lead.category ?? ""} ${lead.address ?? ""} ${lead.email ?? ""}`).includes(needle)) return false;
-      if (status !== "all" && lead.status !== status) return false;
-      if (filters.has("high") && (lead.lead_score ?? 0) < 70) return false;
-      if (filters.has("no_web") && lead.website) return false;
-      if (filters.has("social") && presenceOf(lead) !== "social") return false;
-      if (filters.has("whatsapp") && !lead.whatsapp) return false;
-      if (filters.has("email") && !lead.email) return false;
-      if (filters.has("not_contacted") && (lead.contact_attempts > 0 || lead.status !== "new")) return false;
-      return true;
-    });
-    list = [...list].sort((a, b) => {
-      if (sort === "reviews") return (b.reviews_count ?? 0) - (a.reviews_count ?? 0);
-      if (sort === "rating") return (b.rating ?? 0) - (a.rating ?? 0);
-      if (sort === "recent") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      return (b.lead_score ?? -1) - (a.lead_score ?? -1) || (b.reviews_count ?? 0) - (a.reviews_count ?? 0);
-    });
-    return list;
-  }, [all, query, status, filters, sort]);
-
-  useEffect(() => setPage(1), [query, status, filters, sort]);
-
-  const pages = Math.max(1, Math.ceil(visible.length / PER_PAGE));
-  const pageItems = visible.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const openLead = all.find((lead) => lead.id === openLeadId) ?? null;
-  const allOnPageSelected = pageItems.length > 0 && pageItems.every((lead) => selected.has(lead.id));
-
-  function toggleFilter(id: QuickFilter) {
-    setFilters((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  async function openCampaign(ids: string[]) {
+    setCampaignFor(ids);
+    if (!base) return;
+    try { setTemplates(await api.get<MessageTemplate[]>(`${base}/templates/messages`)); } catch { setTemplates([]); }
   }
 
-  function toggleSelected(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  async function createCampaign() {
+    if (!base || !campaignFor || !templateId) return;
+    setBusy(true);
+    try {
+      await api.post(`${base}/campaigns`, {
+        name: campaignName || `Campaña - ${new Date().toLocaleDateString("es-CO")}`,
+        message_template_id: templateId,
+        lead_ids: campaignFor,
+      });
+      setNotice({ tone: "ok", text: `Campaña creada con ${campaignFor.length} ${campaignFor.length === 1 ? "lead" : "leads"}.` });
+      setCampaignFor(null); setSelected(new Set()); setCampaignName("");
+    } catch (err) {
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "Error al crear la campaña" });
+    } finally { setBusy(false); }
+  }
+
+  async function deleteLead(id: string) {
+    if (!base) return;
+    setDeleteId(null); setOpenId(null);
+    try { await api.delete(`${base}/leads/${id}`); setLeads((prev) => prev?.filter((item) => item.id !== id) ?? null); }
+    catch (err) { setNotice({ tone: "error", text: err instanceof Error ? err.message : "Error al eliminar" }); }
   }
 
   function exportCsv() {
-    const rows = selected.size ? visible.filter((lead) => selected.has(lead.id)) : visible;
-    downloadLeadsCsv(rows);
-    notify(`Exportados ${rows.length} leads a CSV (se abre en Excel o Google Sheets).`);
+    const rows = selected.size ? filtered.filter((lead) => selected.has(lead.id)) : filtered;
+    downloadLeadsCsv(rows, `jarvis_leads_${new Date().toISOString().slice(0, 10)}.csv`);
+    setNotice({ tone: "ok", text: `Exportados ${rows.length} leads a CSV (se abre en Excel o Google Sheets).` });
+  }
+
+  async function refreshData() {
+    if (!base) return;
+    setBusy(true);
+    try {
+      const result = await api.post<{ processed: number; with_whatsapp: number; without_website: number; audits_queued: number }>(`${base}/leads/enrich`);
+      setNotice({ tone: "ok", text: `Datos actualizados: ${result.processed} leads revisados, ${result.with_whatsapp} con WhatsApp y ${result.audits_queued} webs en auditoría.` });
+      await loadLeads();
+    } catch (err) {
+      setNotice({ tone: "error", text: err instanceof Error ? err.message : "No se pudieron actualizar los datos" });
+    } finally { setBusy(false); }
+  }
+
+  async function updateFollowUp(path: string, body?: unknown) {
+    if (!base) return;
+    try { await api.patch(`${base}/follow-ups/${path}`, body); await loadFollowUps(); }
+    catch (err) { setNotice({ tone: "error", text: err instanceof Error ? err.message : "Error al actualizar el seguimiento" }); }
   }
 
   return (
     <AppShell>
-      <div className="space-y-5">
-        {/* Encabezado y acciones */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="font-display text-2xl font-bold text-ink">Leads</h1>
-            <p className="mt-0.5 text-[13px] text-ink-muted">Negocios encontrados en Google Maps, ordenados por su potencial de venta.</p>
+      <div className="space-y-5 pb-24">
+        {/* Buscar clientes nuevos */}
+        {showSearch ? (
+          <div className="relative">
+            <JarvisSearch workspaceId={workspaceId} autoFocus={autoFocusSearch} onDone={() => { loadLeads(); window.setTimeout(loadLeads, 30_000); }} />
+            {!!leads?.length && (
+              <button onClick={() => setShowSearch(false)} aria-label="Ocultar buscador" className="absolute right-3 top-3 rounded-lg p-1.5 text-ink-dim hover:bg-white/5 hover:text-ink"><X size={15} /></button>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-            <Button variant="secondary" onClick={() => void enrichAll()} disabled={!workspaceId || enriching} title="Completa WhatsApp/redes y recalcula el potencial">
-              {enriching ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} Actualizar datos
-            </Button>
-            <Link href="/outreach" className="hidden items-center gap-2 rounded-lg border border-[#25D366]/40 sm:inline-flex bg-[#25D366]/10 px-4 py-2 text-[13px] font-medium text-[#25D366] hover:bg-[#25D366]/20">
-              <Send size={14} /> Contactar hoy
-            </Link>
-            <Button onClick={() => setImportOpen(true)} disabled={!workspaceId}>
-              <Search size={14} /> Buscar negocios
-            </Button>
-          </div>
-        </div>
+        ) : (
+          <button onClick={() => setShowSearch(true)}
+            className="group flex w-full items-center gap-4 rounded-2xl border border-border bg-card px-6 py-4 text-left transition-colors hover:border-border-light hover:bg-card-hover">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-ink"><Sparkles size={17} /></span>
+            <span>
+              <span className="block text-[15px] font-semibold text-ink">Buscar clientes nuevos</span>
+              <span className="text-[12.5px] text-ink-dim">Colombia, España o Estados Unidos · escribe &quot;rubro en ciudad&quot;</span>
+            </span>
+            <ChevronDown size={18} className="ml-auto text-ink-dim" />
+          </button>
+        )}
 
         {notice && (
-          <div
-            role="status"
-            className={cn(
-              "flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-[13px]",
-              notice.tone === "ok" ? "border-teal/30 bg-teal/10 text-teal" : "border-red/30 bg-red/10 text-red",
-            )}
-          >
-            <span className="flex items-center gap-2">{notice.tone === "ok" && <CheckCircle2 size={15} />} {notice.text}</span>
+          <div className={cn("flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-[12px]", notice.tone === "ok" ? "border-accent/30 bg-accent/10 text-ink" : "border-red/30 bg-red/10 text-red")}>
+            <span>{notice.text}</span>
             <button onClick={() => setNotice(null)} aria-label="Cerrar aviso"><X size={14} /></button>
           </div>
         )}
 
-        {workspaceId && (
-          <ImportPanel workspaceId={workspaceId} open={importOpen} onOpenChange={setImportOpen} onFinished={onImportFinished} />
+        {/* Seguimientos pendientes */}
+        {followUps.length > 0 && (
+          <details className="group rounded-2xl border border-border bg-card">
+            <summary className="flex cursor-pointer list-none items-center gap-2.5 px-6 py-4 text-[14px] font-medium text-ink">
+              <CalendarClock size={16} className="text-violet" /> Seguimientos pendientes
+              <span className="rounded-md bg-white/[0.06] px-2 text-[12px] tabular-nums text-ink-muted">{followUps.length}</span>
+              {followUps.some((item) => item.status === "due") && <span className="rounded-full bg-amber/15 px-2 text-[10px] text-amber">hay vencidos</span>}
+              <ChevronDown size={15} className="ml-auto text-ink-dim transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="grid gap-2 px-6 pb-5 md:grid-cols-2 xl:grid-cols-3">
+              {followUps.map((item) => {
+                const lead = leads?.find((candidate) => candidate.id === item.lead_id);
+                return (
+                  <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-input px-3.5 py-3">
+                    <button onClick={() => setOpenId(item.lead_id)} className="min-w-0 text-left">
+                      <p className="truncate text-[12px] font-medium text-ink hover:text-violet">{lead?.name ?? "Lead"}</p>
+                      <p className={cn("text-[10px]", item.status === "due" ? "text-amber" : "text-ink-muted")}>
+                        {item.status === "due" ? "Vencido · " : ""}{new Date(item.next_follow_up_at).toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
+                      </p>
+                    </button>
+                    <div className="flex shrink-0 gap-1">
+                      <button title="Hecho" onClick={() => updateFollowUp(`${item.id}/complete`)} className="rounded-md p-1.5 text-accent hover:bg-accent/10"><Check size={14} /></button>
+                      <button title="Cancelar" onClick={() => updateFollowUp(`${item.id}/cancel`, { reason: "cancelled_by_user" })} className="rounded-md p-1.5 text-red hover:bg-red/10"><Ban size={14} /></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </details>
         )}
 
-        {/* Indicadores */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-          <Stat icon={<Users size={15} />} tone="bg-accent/15 text-accent" value={stats.total} label="Leads" />
-          <Stat icon={<Flame size={15} />} tone="bg-teal/15 text-teal" value={stats.high} label="Potencial alto" onClick={() => toggleFilter("high")} active={filters.has("high")} />
-          <Stat icon={<Globe size={15} />} tone="bg-amber/15 text-amber" value={stats.noWeb} label="Sin página web" onClick={() => toggleFilter("no_web")} active={filters.has("no_web")} />
-          <Stat icon={<WhatsAppIcon size={15} />} tone="bg-[#25D366]/15 text-[#25D366]" value={stats.whatsapp} label="Con WhatsApp" onClick={() => toggleFilter("whatsapp")} active={filters.has("whatsapp")} />
-          <Stat icon={<Send size={15} />} tone="bg-blue/15 text-blue" value={stats.contacted} label="Contactados" className="col-span-2 lg:col-span-1" />
-        </div>
-
-        {/* Búsqueda y filtros */}
-        <div className="space-y-3 rounded-xl border border-border/40 bg-card p-4">
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="flex flex-1 items-center gap-2 rounded-lg border border-border/50 bg-input px-3 focus-within:border-accent/50">
-              <Search size={14} className="text-ink-dim" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por nombre, categoría, barrio o correo"
-                className="w-full bg-transparent py-2 text-[13px] text-ink outline-none placeholder:text-ink-dim"
-              />
-              {query && <button onClick={() => setQuery("")} aria-label="Limpiar búsqueda"><X size={13} className="text-ink-dim" /></button>}
-            </div>
-            <div className="flex gap-2">
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as LeadStatus | "all")}
-                className="min-w-0 flex-1 rounded-lg border border-border/50 bg-input px-3 py-2 text-[13px] text-ink outline-none sm:flex-none"
-                aria-label="Filtrar por estado"
-              >
-                <option value="all">Todos los estados</option>
-                {LEAD_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        {/* Barra de herramientas y filtros */}
+        <section className="space-y-4 rounded-2xl border border-border bg-card p-5">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
+            <label className="flex flex-1 items-center gap-2.5 rounded-xl border border-border bg-input px-3.5 py-2.5 focus-within:border-border-light">
+              <Search size={16} className="text-ink-dim" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Filtrar por nombre, categoría, email o dirección…"
+                className="w-full bg-transparent text-[14px] text-ink outline-none placeholder:text-ink-dim" />
+              {query && <button onClick={() => setQuery("")} aria-label="Borrar filtro"><X size={14} className="text-ink-dim" /></button>}
+            </label>
+            <div className="flex items-center gap-2">
+              <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Ordenar"
+                className="rounded-xl border border-border bg-input px-3 py-2.5 text-[13px] text-ink outline-none">
+                {SORTS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
               </select>
-              <label className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-border/50 bg-input px-3 sm:flex-none">
-                <ArrowUpDown size={13} className="shrink-0 text-ink-dim" />
-                <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} className="min-w-0 bg-transparent py-2 text-[13px] text-ink outline-none" aria-label="Ordenar">
-                  {SORTS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                </select>
-              </label>
+              <div className="flex rounded-xl bg-input p-1">
+                <button onClick={() => changeView("cards")} aria-label="Vista de tarjetas" className={cn("rounded-lg p-1.5", view === "cards" ? "bg-card-hover text-ink" : "text-ink-dim hover:text-ink")}><LayoutGrid size={15} /></button>
+                <button onClick={() => changeView("table")} aria-label="Vista de tabla" className={cn("rounded-lg p-1.5", view === "table" ? "bg-card-hover text-ink" : "text-ink-dim hover:text-ink")}><List size={15} /></button>
+              </div>
+              <button onClick={refreshData} disabled={busy} title="Actualizar datos: completa WhatsApp y redes, recalcula puntajes y audita webs pendientes" className="flex items-center gap-2 rounded-xl border border-border px-3.5 py-2.5 text-[13px] font-medium text-ink-muted hover:border-border-light hover:text-ink disabled:opacity-50"><RefreshCw size={15} className={busy ? "animate-spin" : ""} /> Actualizar datos</button>
+              <button onClick={exportCsv} className="flex items-center gap-2 rounded-xl border border-border px-3.5 py-2.5 text-[13px] font-medium text-ink-muted hover:border-border-light hover:text-ink"><Download size={15} /> Exportar</button>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {QUICK_FILTERS.map((filter) => (
-              <button
-                key={filter.id}
-                onClick={() => toggleFilter(filter.id)}
-                className={cn(
-                  "rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors",
-                  filters.has(filter.id) ? "border-accent/50 bg-accent/15 text-accent" : "border-border/40 bg-input text-ink-muted hover:border-border hover:text-ink",
-                )}
-              >
-                {filter.label}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {QUICK_FILTERS.map((item) => (
+              <button key={item.key}
+                onClick={() => setQuick((prev) => { const next = new Set(prev); next.has(item.key) ? next.delete(item.key) : next.add(item.key); return next; })}
+                className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] transition-colors", quick.has(item.key) ? "border-border-light bg-white/[0.08] text-ink" : "border-border text-ink-muted hover:border-border-light hover:text-ink")}>
+                {item.label} <span className="tabular-nums text-ink-dim">{counts.quick[item.key] ?? 0}</span>
               </button>
             ))}
-            {(filters.size > 0 || status !== "all" || query) && (
-              <button onClick={() => { setFilters(new Set()); setStatus("all"); setQuery(""); }} className="text-[12px] font-medium text-red hover:text-red/80">
-                Quitar filtros
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-[12.5px] text-ink-dim">Servicio</span>
+            {Object.entries(SERVICE_META).filter(([key]) => (counts.service[key] ?? 0) > 0).map(([key, meta]) => (
+              <button key={key} onClick={() => setService(service === key ? null : key)}
+                className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] transition-colors", service === key ? "border-border-light bg-white/[0.08] text-ink" : "border-border text-ink-muted hover:border-border-light hover:text-ink")}>
+                <span className="h-2 w-2 rounded-full" style={{ background: meta.color }} /> {meta.label} <span className="tabular-nums text-ink-dim">{counts.service[key]}</span>
+              </button>
+            ))}
+            <span className="mx-2 h-5 w-px bg-border" />
+            {Object.entries(COUNTRY_META).filter(([key]) => (counts.country[key] ?? 0) > 0).map(([key, meta]) => (
+              <button key={key} onClick={() => setCountry(country === key ? null : key)} title={meta.name}
+                className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] transition-colors", country === key ? "border-border-light bg-white/[0.08] text-ink" : "border-border text-ink-muted hover:border-border-light hover:text-ink")}>
+                <Flag code={key} /> <span className="tabular-nums text-ink-dim">{counts.country[key]}</span>
+              </button>
+            ))}
+            {status && (
+              <button onClick={() => setStatus(null)} className="flex items-center gap-1.5 rounded-lg border border-border-light bg-white/[0.08] text-ink px-3 py-1.5 text-[12.5px]">
+                <span className={cn("h-1.5 w-1.5 rounded-full", statusMeta(status).dot)} /> {statusMeta(status).label} <X size={12} />
               </button>
             )}
-            <span className="ml-auto text-[12px] text-ink-dim">{visible.length.toLocaleString("es-CO")} de {stats.total.toLocaleString("es-CO")}</span>
+            {hasFilters && <button onClick={clearFilters} className="ml-auto text-[11px] font-semibold text-red hover:underline">Quitar filtros</button>}
           </div>
-          {selected.size > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-accent/25 bg-accent/5 px-3 py-2">
-              <span className="mr-auto text-[12px] font-medium text-accent">{selected.size} seleccionados</span>
-              <Button variant="secondary" onClick={exportCsv}><Download size={13} /> Exportar</Button>
-              <Button onClick={() => setCampaignOpen(true)}><Megaphone size={13} /> Crear campaña</Button>
-              <button onClick={() => setSelected(new Set())} className="text-[12px] text-ink-dim hover:text-ink">Quitar selección</button>
-            </div>
+        </section>
+
+        <div className="flex items-center justify-between px-1 text-[13px] text-ink-muted">
+          <span><span className="font-semibold tabular-nums text-ink">{filtered.length}</span> {filtered.length === 1 ? "negocio" : "negocios"}{hasFilters ? " con estos filtros" : ""}</span>
+          {filtered.length > 0 && (
+            <button onClick={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((lead) => lead.id)))} className="font-medium text-ink-muted hover:text-ink">
+              {selected.size === filtered.length ? "Quitar selección" : `Seleccionar los ${filtered.length}`}
+            </button>
           )}
         </div>
 
-        {/* Listado */}
-        {leads === null || loading ? (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-border/40 bg-card py-16 text-[13px] text-ink-muted">
-            <Loader2 size={16} className="animate-spin" /> Cargando leads…
+        {/* Resultados */}
+        {leads === null ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 8 }, (_, index) => <div key={index} className="h-44 animate-pulse rounded-2xl border border-border/40 bg-card/60" />)}
           </div>
-        ) : all.length === 0 ? (
-          <EmptyState onSearch={() => setImportOpen(true)} />
-        ) : visible.length === 0 ? (
-          <div className="rounded-xl border border-border/40 bg-card py-12 text-center text-[13px] text-ink-muted">Ningún lead coincide con los filtros.</div>
-        ) : (
-          <div className="overflow-hidden rounded-xl border border-border/40 bg-card">
-            {/* Computador: tabla */}
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full text-left text-[13px]">
-                <thead>
-                  <tr className="border-b border-border/30 text-[11px] uppercase tracking-wider text-ink-dim">
-                    <th className="w-10 px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label="Seleccionar página"
-                        checked={allOnPageSelected}
-                        onChange={() => setSelected((prev) => {
-                          const next = new Set(prev);
-                          pageItems.forEach((lead) => (allOnPageSelected ? next.delete(lead.id) : next.add(lead.id)));
-                          return next;
-                        })}
-                        className="accent-[#825aff]"
-                      />
-                    </th>
-                    <th className="px-2 py-3 font-semibold">Potencial</th>
-                    <th className="px-3 py-3 font-semibold">Negocio</th>
-                    <th className="px-3 py-3 font-semibold">Presencia digital</th>
-                    <th className="px-3 py-3 font-semibold">Reseñas</th>
-                    <th className="px-3 py-3 font-semibold">Estado</th>
-                    <th className="px-4 py-3 text-right font-semibold">Contacto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageItems.map((lead) => (
-                    <tr key={lead.id} onClick={() => setOpenLeadId(lead.id)} className="cursor-pointer border-b border-border/20 transition-colors hover:bg-card-hover">
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" aria-label={`Seleccionar ${lead.name}`} checked={selected.has(lead.id)} onChange={() => toggleSelected(lead.id)} className="accent-[#825aff]" />
-                      </td>
-                      <td className="px-2 py-3"><ScoreBadge score={lead.lead_score} /></td>
-                      <td className="max-w-[320px] px-3 py-3">
-                        <p className="truncate font-semibold text-ink">{lead.name}</p>
-                        <p className="truncate text-[12px] text-ink-dim">{[lead.category, cityOf(lead.address)].filter(Boolean).join(" · ")}</p>
-                      </td>
-                      <td className="px-3 py-3"><PresenceBadge lead={lead} /></td>
-                      <td className="px-3 py-3"><Rating rating={lead.rating} reviews={lead.reviews_count} /></td>
-                      <td className="px-3 py-3">
-                        <div className="flex flex-col items-start gap-1">
-                          <StatusBadge status={lead.status} />
-                          {lead.do_not_contact && <span className="text-[10px] font-semibold text-red">No contactar</span>}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <ContactButton lead={lead} busy={contactingId === lead.id} onContact={() => void contact(lead)} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Celular: tarjetas */}
-            <ul className="divide-y divide-border/20 md:hidden">
-              {pageItems.map((lead) => (
-                <li key={lead.id} onClick={() => setOpenLeadId(lead.id)} className="flex items-start gap-3 px-4 py-3 active:bg-card-hover">
-                  <ScoreBadge score={lead.lead_score} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-ink">{lead.name}</p>
-                    <p className="truncate text-[12px] text-ink-dim">{[lead.category, cityOf(lead.address)].filter(Boolean).join(" · ")}</p>
-                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                      <PresenceBadge lead={lead} />
-                      <StatusBadge status={lead.status} />
-                      <Rating rating={lead.rating} reviews={lead.reviews_count} />
-                    </div>
-                  </div>
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <ContactButton lead={lead} busy={contactingId === lead.id} onContact={() => void contact(lead)} compact />
-                  </div>
-                </li>
-              ))}
-            </ul>
-
-            {/* Paginación */}
-            <div className="flex flex-col items-center justify-between gap-2 border-t border-border/20 px-4 py-3 sm:flex-row">
-              <span className="text-[12px] text-ink-dim">
-                {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, visible.length)} de {visible.length.toLocaleString("es-CO")}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>Anterior</Button>
-                <span className="text-[12px] text-ink-muted">Página {page} de {pages}</span>
-                <Button variant="secondary" disabled={page === pages} onClick={() => setPage((p) => p + 1)}>Siguiente</Button>
-              </div>
-              <Button variant="ghost" onClick={exportCsv}><Download size={13} /> Exportar {selected.size ? "selección" : "lista"}</Button>
-            </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border/60 p-12 text-center">
+            <Search size={30} className="mx-auto text-cyan" />
+            <p className="mt-3 font-display text-lg font-bold text-ink">{leads.length ? "Ningún negocio coincide" : "Aún no tienes leads"}</p>
+            <p className="mt-1 text-[12px] text-ink-muted">{leads.length ? "Prueba quitando algún filtro." : "Usa el buscador de arriba para traer tus primeros clientes."}</p>
+            {hasFilters && <button onClick={clearFilters} className="mt-4 rounded-lg border border-cyan/30 bg-cyan/10 px-3 py-2 text-[12px] font-semibold text-cyan">Quitar filtros</button>}
           </div>
-        )}
-      </div>
-
-      {workspaceId && (
-        <LeadDrawer
-          lead={openLead}
-          workspaceId={workspaceId}
-          onClose={() => setOpenLeadId(null)}
-          onChanged={() => void load()}
-          onNotify={notify}
-        />
-      )}
-
-      {workspaceId && (
-        <CampaignDialog
-          open={campaignOpen}
-          onClose={() => setCampaignOpen(false)}
-          workspaceId={workspaceId}
-          leadIds={[...selected]}
-          onCreated={(count) => {
-            setSelected(new Set());
-            notify(`Campaña creada con ${count} leads. Revísala en Campañas.`);
-          }}
-        />
-      )}
-    </AppShell>
-  );
-}
-
-function Stat({
-  icon, tone, value, label, onClick, active, className,
-}: { icon: React.ReactNode; tone: string; value: number; label: string; onClick?: () => void; active?: boolean; className?: string }) {
-  const Tag = onClick ? "button" : "div";
-  return (
-    <Tag
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors sm:block sm:p-4",
-        active ? "border-accent/50" : "border-border/40",
-        onClick && "hover:border-accent/30",
-        className,
-      )}
-    >
-      <span className={cn("inline-flex shrink-0 rounded-lg p-2", tone)}>{icon}</span>
-      <span className="block min-w-0">
-        <span className="block font-mono text-lg font-bold text-ink sm:mt-2 sm:text-xl">{value.toLocaleString("es-CO")}</span>
-        <span className="block truncate text-[12px] text-ink-muted">{label}</span>
-      </span>
-    </Tag>
-  );
-}
-
-function ContactButton({ lead, busy, onContact, compact }: { lead: Lead; busy: boolean; onContact: () => void; compact?: boolean }) {
-  if (lead.do_not_contact) return <span className="text-[11px] text-ink-dim">—</span>;
-  if (!lead.whatsapp) {
-    return lead.phone ? (
-      <a href={`tel:${lead.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-1 rounded-lg border border-border/50 px-2.5 py-1.5 text-[12px] text-ink-muted hover:text-ink">
-        Llamar
-      </a>
-    ) : (
-      <span className="text-[11px] text-ink-dim">Sin teléfono</span>
-    );
-  }
-  return (
-    <button
-      onClick={onContact}
-      disabled={busy}
-      title="Abrir WhatsApp con el mensaje listo"
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg bg-[#25D366] font-semibold text-[#06210f] transition-colors hover:bg-[#2ee26f] disabled:opacity-50",
-        compact ? "p-2.5" : "px-3 py-1.5 text-[12px]",
-      )}
-    >
-      {busy ? <Loader2 size={14} className="animate-spin" /> : <WhatsAppIcon size={14} />}
-      {!compact && (lead.contact_attempts > 0 ? "Seguimiento" : "Escribir")}
-    </button>
-  );
-}
-
-function EmptyState({ onSearch }: { onSearch: () => void }) {
-  return (
-    <div className="rounded-xl border border-dashed border-border/60 bg-card px-6 py-14 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent/15 text-accent"><Search size={20} /></div>
-      <h2 className="mt-4 font-display text-lg font-bold text-ink">Encuentra tus primeros clientes</h2>
-      <p className="mx-auto mt-1 max-w-md text-[13px] text-ink-muted">
-        Busca un tipo de negocio y una zona. Jarvis los trae de Google Maps, detecta cuáles no tienen página web y los ordena por potencial de venta.
-      </p>
-      <Button className="mt-5" onClick={onSearch}><Search size={14} /> Buscar negocios</Button>
-    </div>
-  );
-}
-
-function CampaignDialog({
-  open, onClose, workspaceId, leadIds, onCreated,
-}: { open: boolean; onClose: () => void; workspaceId: string; leadIds: string[]; onCreated: (count: number) => void }) {
-  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
-  const [templateId, setTemplateId] = useState("");
-  const [name, setName] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    setError(null);
-    api.get<MessageTemplate[]>(`/workspaces/${workspaceId}/templates/messages`).then(setTemplates).catch(() => setTemplates([]));
-  }, [open, workspaceId]);
-
-  async function create() {
-    setSaving(true);
-    setError(null);
-    try {
-      await api.post(`/workspaces/${workspaceId}/campaigns`, {
-        name: name.trim() || `Campaña ${new Date().toLocaleDateString("es-CO")}`,
-        message_template_id: templateId,
-        lead_ids: leadIds,
-      });
-      onCreated(leadIds.length);
-      onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo crear la campaña.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogTitle>Crear campaña</DialogTitle>
-      <DialogDescription>Agrupa {leadIds.length} leads con una plantilla de mensaje.</DialogDescription>
-      <div className="mt-5 space-y-4">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={`Campaña ${new Date().toLocaleDateString("es-CO")}`}
-          className="w-full rounded-lg border border-border/50 bg-input px-3 py-2.5 text-[13px] text-ink outline-none focus:border-accent/50"
-        />
-        {templates.length === 0 ? (
-          <p className="text-[13px] text-ink-muted">Primero crea una plantilla en <Link href="/templates" className="text-accent hover:underline">Plantillas</Link>.</p>
-        ) : (
-          <div className="max-h-64 space-y-2 overflow-y-auto">
-            {templates.map((template) => (
-              <button
-                key={template.id}
-                onClick={() => setTemplateId(template.id)}
-                className={cn("w-full rounded-lg border p-3 text-left", templateId === template.id ? "border-accent/50 bg-accent/10" : "border-border/40 bg-input hover:border-border")}
-              >
-                <p className="text-[13px] font-medium text-ink">{template.name}</p>
-                <p className="mt-0.5 line-clamp-2 text-[12px] text-ink-dim">{template.content}</p>
-              </button>
+        ) : view === "cards" ? (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {shown.map((lead) => (
+              <LeadCard key={lead.id} lead={lead} selected={selected.has(lead.id)} onSelect={() => toggle(lead.id)} onOpen={() => setOpenId(lead.id)} />
             ))}
           </div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border border-border bg-card">
+            <table className="w-full min-w-[860px] text-left text-[12px]">
+              <thead>
+                <tr className="border-b border-border text-[12px] text-ink-dim">
+                  <th className="w-10 px-4 py-3" />
+                  <th className="px-3 py-3 font-medium">Negocio</th>
+                  <th className="px-3 py-3 font-medium">Oportunidad</th>
+                  <th className="px-3 py-3 font-medium">Etapa</th>
+                  <th className="px-3 py-3 font-medium">WhatsApp</th>
+                  <th className="px-3 py-3 font-medium">Email</th>
+                  <th className="px-3 py-3 font-medium">Reseñas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shown.map((lead) => {
+                  const meta = lead.score_niche ? SERVICE_META[lead.score_niche] : undefined;
+                  const stage = statusMeta(lead.status);
+                  return (
+                    <tr key={lead.id} onClick={() => setOpenId(lead.id)} className={cn("cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-white/[0.02]", selected.has(lead.id) && "bg-white/[0.03]")}>
+                      <td className="px-4 py-2.5" onClick={(event) => event.stopPropagation()}>
+                        <input type="checkbox" checked={selected.has(lead.id)} onChange={() => toggle(lead.id)} aria-label={`Seleccionar ${lead.name}`} className="h-4 w-4 accent-[#39ff88]" />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <p className="flex items-center gap-1.5 font-medium text-ink"><Flag code={lead.country} /> {lead.name}</p>
+                        <p className="text-[11px] text-ink-dim">{lead.category}</p>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="flex items-center gap-2">
+                          <ScoreRing score={lead.lead_score} size={32} />
+                          {meta && <span className="flex items-center gap-1.5 whitespace-nowrap text-ink-muted"><span className="h-2 w-2 rounded-sm" style={{ background: meta.color }} />{meta.short}</span>}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5"><span className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-ink-muted"><span className={cn("h-1.5 w-1.5 rounded-full", stage.dot)} />{stage.label}</span></td>
+                      <td className="whitespace-nowrap px-3 py-2.5 font-mono text-[11px] text-ink-muted">{lead.whatsapp ? <span className="text-ink">+{lead.whatsapp}</span> : "—"}</td>
+                      <td className="max-w-[200px] truncate px-3 py-2.5 text-[11px] text-ink-muted">{lead.email ?? "—"}</td>
+                      <td className="px-3 py-2.5 font-mono text-ink-muted">{lead.rating ? `${lead.rating.toFixed(1)}★ · ${lead.reviews_count ?? 0}` : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
-        {error && <p className="rounded-lg bg-red/10 px-3 py-2 text-[12px] text-red">{error}</p>}
+
+        {visible < filtered.length && (
+          <button onClick={() => setVisible(visible + PAGE_SIZE)} className="mx-auto flex items-center gap-2 rounded-xl border border-border px-5 py-2.5 text-[13px] font-medium text-ink-muted transition-colors hover:border-border-light hover:text-ink">
+            Ver más ({filtered.length - visible} restantes) <ChevronDown size={14} />
+          </button>
+        )}
       </div>
-      <div className="mt-6 flex justify-end gap-2">
-        <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-        <Button onClick={() => void create()} disabled={saving || !templateId}>
-          {saving ? <RefreshCw size={14} className="animate-spin" /> : <Megaphone size={14} />} Crear campaña
-        </Button>
-      </div>
-    </Dialog>
+
+      {/* Acciones sobre la selección */}
+      {selected.size > 0 && (
+        <div className="rise-in fixed inset-x-3 bottom-20 z-50 mx-auto flex max-w-3xl flex-wrap items-center gap-2 rounded-2xl border border-border-light bg-card-hover/95 p-2.5 shadow-2xl shadow-black/60 backdrop-blur-xl lg:bottom-6 lg:left-64">
+          <span className="px-3 text-[13px] text-ink-muted"><span className="font-semibold tabular-nums text-ink">{selected.size}</span> seleccionados</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button onClick={bulkDraft} disabled={busy} className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-50">
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <PenLine size={14} />} Que Jarvis les escriba
+            </button>
+            <button onClick={() => openCampaign(Array.from(selected))} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-white/[0.05] hover:text-ink"><Megaphone size={15} /> Campaña</button>
+            <button onClick={exportCsv} className="flex items-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium text-ink-muted hover:bg-white/[0.05] hover:text-ink"><Download size={15} /> Exportar</button>
+            <button onClick={() => setSelected(new Set())} aria-label="Quitar selección" className="rounded-lg px-2.5 text-ink-dim hover:bg-white/[0.05] hover:text-ink"><X size={16} /></button>
+          </div>
+        </div>
+      )}
+
+      <LeadDrawer
+        lead={openLead}
+        onClose={() => setOpenId(null)}
+        onStatus={(next: LeadStatus) => updateLead(openLead!.id, { status: next })}
+        onDoNotContact={(value) => updateLead(openLead!.id, { do_not_contact: value })}
+        onDraft={() => draft([openLead!.id])}
+        onCampaign={() => openCampaign([openLead!.id])}
+        onDelete={() => setDeleteId(openLead!.id)}
+      />
+
+      <Dialog open={!!deleteId} onClose={() => setDeleteId(null)}>
+        <DialogTitle>Eliminar lead</DialogTitle>
+        <DialogDescription>Se borrará el negocio y sus mensajes. Esta acción no se puede deshacer.</DialogDescription>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancelar</Button>
+          <Button variant="danger" onClick={() => deleteId && deleteLead(deleteId)}>Eliminar</Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={!!campaignFor} onClose={() => setCampaignFor(null)}>
+        <DialogTitle>Crear campaña</DialogTitle>
+        <DialogDescription>Con {campaignFor?.length ?? 0} {campaignFor?.length === 1 ? "lead" : "leads"}. Elige la plantilla del mensaje.</DialogDescription>
+        <div className="mt-5 space-y-4">
+          <input value={campaignName} onChange={(event) => setCampaignName(event.target.value)} placeholder={`Campaña - ${new Date().toLocaleDateString("es-CO")}`}
+            className="w-full rounded-xl border border-border/50 bg-input px-4 py-2.5 text-[13px] text-ink outline-none focus:border-border-light" />
+          {templates.length > 0 ? (
+            <div className="max-h-64 space-y-2 overflow-y-auto">
+              {templates.map((template) => (
+                <button key={template.id} onClick={() => setTemplateId(template.id)}
+                  className={cn("w-full rounded-xl border p-3 text-left transition-colors", templateId === template.id ? "border-accent/60 bg-white/[0.04]" : "border-border bg-input hover:border-border-light")}>
+                  <p className="text-[12px] font-medium text-ink">{template.name}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-ink-dim">{template.content}</p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[12px] text-ink-dim">No hay plantillas. Crea una en <a href="/templates" className="text-ink underline">Plantillas</a>.</p>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setCampaignFor(null)}>Cancelar</Button>
+          <button onClick={createCampaign} disabled={busy || !templateId} className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-40">
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Megaphone size={14} />} Crear campaña
+          </button>
+        </div>
+      </Dialog>
+    </AppShell>
   );
 }

@@ -8,6 +8,7 @@ si no, envía la respuesta vía MessagingProvider y la guarda como mensaje outbo
 """
 from __future__ import annotations
 
+import logging
 from typing import Awaitable, Callable
 
 from app.application.dto.conversation_dto import IncomingWhatsAppMessageRequest
@@ -17,7 +18,10 @@ from app.application.ports.messaging_provider import MessagingProvider, Outbound
 from app.application.ports.repositories.conversation_repository import ConversationRepository
 from app.application.ports.repositories.lead_repository import LeadRepository
 from app.domain.entities.conversation import Conversation, Message, MessageDirection, MessageSender
+from app.application.services.outreach_message_service import OutreachMessageService
 from app.domain.events.domain_events import ConversationTransferredToHumanEvent, MessageSentEvent
+
+logger = logging.getLogger(__name__)
 
 # Función que dado un workspace_id devuelve su base de conocimiento configurable
 # (ej. desde una tabla de settings, un documento, o un servicio externo). Se inyecta
@@ -64,6 +68,10 @@ class ProcessIncomingWhatsAppMessageUseCase:
             # Ya transferida: no se auto-responde, un humano la está atendiendo.
             return conversation
 
+        if OutreachMessageService.is_opt_out(request.text):
+            # Pidió no ser contactado: nunca se le responde automáticamente
+            return conversation
+
         knowledge_base = await self._knowledge_base_lookup(request.workspace_id)
 
         history = [
@@ -71,22 +79,27 @@ class ProcessIncomingWhatsAppMessageUseCase:
             for m in conversation.messages
         ]
 
-        chat_response = await self._ai.generate_chat_reply(
-            ChatContext(
-                conversation_history=history,
-                knowledge_base=knowledge_base,
-                tenant_id=request.workspace_id,
-            ),
-            request.text,
-        )
+        try:
+            chat_response = await self._ai.generate_chat_reply(
+                ChatContext(
+                    conversation_history=history,
+                    knowledge_base=knowledge_base,
+                    tenant_id=request.workspace_id,
+                ),
+                request.text,
+            )
+        except Exception:
+            # Sin IA configurada (o caída): el lead que respondió lo atiende una persona
+            logger.exception("No se pudo generar respuesta automática; se transfiere a humano")
+            chat_response = None
 
-        if chat_response.should_transfer_to_human:
+        if chat_response is None or chat_response.should_transfer_to_human:
             await self._conversations.mark_transferred_to_human(request.workspace_id, conversation.id)
             await self._event_bus.publish(
                 ConversationTransferredToHumanEvent(
                     workspace_id=request.workspace_id,
                     conversation_id=conversation.id,
-                    reason=chat_response.detected_intent or "ai_could_not_answer",
+                    reason=(chat_response.detected_intent if chat_response else None) or "ai_could_not_answer",
                 )
             )
             return conversation

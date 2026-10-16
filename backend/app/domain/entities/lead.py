@@ -54,6 +54,7 @@ class Lead:
     facebook: str | None = None
     listing_url: str | None = None  # ficha en directorio (Restaurant Guru, Tripadvisor…)
     category: str | None = None
+    country: str | None = None  # ISO 3166-1 alfa-2 (CO, ES, US)
     rating: float | None = None
     reviews_count: int | None = None
     photos_count: int | None = None
@@ -86,9 +87,11 @@ class Lead:
         self.updated_at = datetime.now(timezone.utc)
 
     def apply_deterministic_score(self, result: object) -> None:
+        reasons = "; ".join(reason.description for reason in result.reasons if reason.points > 0)
+        pitch = getattr(result, "pitch", None)
         self.score = LeadScore(
             value=result.score,
-            summary="; ".join(reason.description for reason in result.reasons if reason.points > 0),
+            summary=f"{pitch}. {reasons}" if pitch and reasons else pitch or reasons,
         )
         self.score_level = result.level
         self.score_reasons = [reason.model_dump() for reason in result.reasons]

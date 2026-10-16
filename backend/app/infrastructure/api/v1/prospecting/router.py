@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,10 +25,13 @@ from app.application.ports.repositories.lead_repository import LeadRepository
 from app.application.ports.repositories.template_repository import TemplateRepository
 from app.application.services.follow_up_service import FollowUpService
 from app.application.use_cases.recalculate_lead_score import RecalculateLeadScoreUseCase
+from app.application.services.outreach_message_service import OutreachMessageService
+from app.domain.countries import COUNTRIES, get_country
 from app.domain.entities.lead import Lead
 from app.domain.services.lead_enrichment import apply_enrichment
 from app.domain.services.outreach import DEFAULT_MESSAGE, is_contactable, priority, render_message, whatsapp_link
 from app.infrastructure.database.models.lead import LeadImportJobModel, WebAuditModel
+from app.infrastructure.database.models.workspace import WorkspaceModel
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.dependencies import (
     CurrentUser,
@@ -54,12 +57,22 @@ class ImportJobBody(BaseModel):
     max_results: int = Field(default=40, ge=5, le=300)
     depth: int = Field(default=1, ge=1, le=5)
     extract_emails: bool = False
+    country: str = "CO"
+
+    @field_validator("country")
+    @classmethod
+    def known_country(cls, value: str) -> str:
+        value = value.upper()
+        if value not in COUNTRIES:
+            raise ValueError(f"País no soportado: {value}")
+        return value
 
 
 class ImportJobResponse(BaseModel):
     id: str
     keyword: str
     location: str
+    country: str
     max_results: int
     extract_emails: bool
     status: str
@@ -78,6 +91,7 @@ def _job_response(job: LeadImportJobModel) -> ImportJobResponse:
         id=job.id,
         keyword=job.keyword,
         location=job.location,
+        country=job.country,
         max_results=job.max_results,
         extract_emails=job.extract_emails,
         status=job.status,
@@ -132,6 +146,7 @@ async def create_import_job(workspace_id: WorkspaceId, body: ImportJobBody, user
         max_results=body.max_results,
         depth=body.depth,
         extract_emails=body.extract_emails,
+        country=body.country,
     )
     session.add(job)
     await session.commit()
@@ -180,7 +195,7 @@ async def enrich_all(workspace_id: WorkspaceId, session: Session, leads: Leads, 
     rescore = RecalculateLeadScoreUseCase(leads, session)
     to_audit: list[str] = []
     for lead in all_leads:
-        apply_enrichment(lead)
+        apply_enrichment(lead, get_country(lead.country).dial_code)
         await leads.update(workspace_id, lead)
         await rescore.execute(workspace_id, lead.id, RecalculateLeadScoreRequest())
         if lead.website and lead.id not in audited_ids:
@@ -217,17 +232,26 @@ class OutreachItem(BaseModel):
     whatsapp_url: str
 
 
-async def _template_content(templates: TemplateRepository, workspace_id: str, template_id: str | None) -> str:
+async def _template_content(templates: TemplateRepository, workspace_id: str, template_id: str | None) -> str | None:
+    """Sin plantilla elegida se usa el mensaje de Jarvis (idioma del país, servicio recomendado y firma)."""
     if not template_id:
-        return DEFAULT_MESSAGE
+        return None
     template = await templates.get_message_template(workspace_id, template_id)
     if template is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Plantilla no encontrada")
     return template.content
 
 
-def _outreach_item(lead: Lead, content: str) -> OutreachItem | None:
-    message = render_message(content, lead)
+async def _signature(session: AsyncSession, workspace_id: str) -> str | None:
+    workspace = await session.get(WorkspaceModel, workspace_id)
+    return workspace.outreach_signature if workspace else None
+
+
+def _outreach_item(lead: Lead, content: str | None, signature: str | None = None) -> OutreachItem | None:
+    if content is None:
+        message = OutreachMessageService().first_touch(lead, signature) if lead.score_niche else render_message(DEFAULT_MESSAGE, lead)
+    else:
+        message = render_message(content, lead)
     url = whatsapp_link(lead, message)
     if url is None:
         return None
@@ -255,6 +279,7 @@ def _outreach_item(lead: Lead, content: str) -> OutreachItem | None:
 async def outreach_queue(
     workspace_id: WorkspaceId,
     leads: Leads,
+    session: Session,
     templates: Annotated[TemplateRepository, Depends(get_template_repository)],
     limit: int = 20,
     template_id: str | None = None,
@@ -262,6 +287,7 @@ async def outreach_queue(
 ):
     """Lista del día: leads con WhatsApp, sin «no contactar», ordenados por potencial."""
     content = await _template_content(templates, workspace_id, template_id)
+    signature = await _signature(session, workspace_id)
     now = datetime.now(timezone.utc)
     candidates = [
         lead
@@ -272,7 +298,7 @@ async def outreach_queue(
         and (lead.last_contacted_at is None or now - lead.last_contacted_at > timedelta(days=3))
     ]
     candidates.sort(key=lambda lead: priority(lead, now), reverse=True)
-    items = [_outreach_item(lead, content) for lead in candidates[: max(1, min(limit, 100))]]
+    items = [_outreach_item(lead, content, signature) for lead in candidates[: max(1, min(limit, 100))]]
     return [item for item in items if item is not None]
 
 
@@ -281,6 +307,7 @@ async def lead_outreach(
     workspace_id: WorkspaceId,
     lead_id: str,
     leads: Leads,
+    session: Session,
     templates: Annotated[TemplateRepository, Depends(get_template_repository)],
     template_id: str | None = None,
 ):
@@ -289,7 +316,7 @@ async def lead_outreach(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Lead no encontrado")
     if lead.do_not_contact:
         raise HTTPException(status.HTTP_409_CONFLICT, "Este negocio pidió no ser contactado.")
-    item = _outreach_item(lead, await _template_content(templates, workspace_id, template_id))
+    item = _outreach_item(lead, await _template_content(templates, workspace_id, template_id), await _signature(session, workspace_id))
     if item is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Este negocio no tiene un número de WhatsApp válido.")
     return item

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OpenWAWebhookPayload(BaseModel):
@@ -31,3 +31,7 @@ class ConversationResponse(BaseModel):
 
 class TransferConversationBody(BaseModel):
     reason: str = "manual_transfer"
+
+
+class ReplyBody(BaseModel):
+    text: str = Field(min_length=1, max_length=4000)

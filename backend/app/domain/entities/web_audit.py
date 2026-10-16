@@ -13,4 +13,7 @@ class WebAudit:
     has_meta_description: bool | None = None
     mobile_friendly: bool | None = None
     load_time_ms: int | None = None
+    has_chatbot: bool | None = None
+    has_whatsapp_link: bool | None = None
+    has_contact_form: bool | None = None
     audited_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

@@ -225,7 +225,7 @@ export default function OutreachPage() {
                 ? `Contactaste ${doneToday.length} negocios. Te avisaremos aquí cuando toque hacerles seguimiento.`
                 : "Busca más negocios en Leads o baja el potencial mínimo para ver más."}
             </p>
-            <Link href="/leads" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white hover:bg-accent-hover">Ir a Leads</Link>
+            <Link href="/leads" className="mt-5 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-accent-ink hover:bg-accent-hover">Ir a Leads</Link>
           </div>
         ) : (
           <ol className="space-y-3">

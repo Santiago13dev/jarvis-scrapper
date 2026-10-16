@@ -6,6 +6,7 @@ const config: Config = {
     "./src/app/**/*.{ts,tsx}",
     "./src/components/**/*.{ts,tsx}",
     "./src/features/**/*.{ts,tsx}",
+    "./src/lib/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {
@@ -28,6 +29,11 @@ const config: Config = {
         blue: "rgb(var(--blue) / <alpha-value>)",
         pink: "rgb(var(--pink) / <alpha-value>)",
         green: "rgb(var(--green) / <alpha-value>)",
+        cyan: "rgb(var(--cyan) / <alpha-value>)",
+        violet: "rgb(var(--violet) / <alpha-value>)",
+        orange: "rgb(var(--orange) / <alpha-value>)",
+        wa: "rgb(var(--wa) / <alpha-value>)",
+        "accent-ink": "rgb(var(--accent-ink) / <alpha-value>)",
       },
       fontFamily: {
         display: ["var(--font-display)", "sans-serif"],

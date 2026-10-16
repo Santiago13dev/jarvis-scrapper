@@ -1,23 +1,28 @@
-# JarvisIA
+# Jarvis IA — máquina de clientes
 
-**Consigue clientes para tu agencia sin pasar horas buscando.** JarvisIA encuentra negocios locales en Google Maps, detecta cuáles necesitan presencia digital (página web, redes, reseñas) y te prepara un mensaje personalizado de WhatsApp para cada uno. Tú solo revisas y envías.
+Jarvis encuentra negocios en Google Maps, detecta cuáles necesitan los servicios de **Jarvis IA** (páginas web, tiendas virtuales, SEO, Google Ads, asistentes de IA para WhatsApp), les escribe un mensaje personalizado y te ayuda a enviarlo por WhatsApp **con tu aprobación**. Funciona en **Colombia, España y Estados Unidos**.
 
-Pensado para agencias y freelancers que venden páginas web, marketing digital, diseño o cualquier servicio a negocios locales.
-
-![Contactar hoy: la lista diaria de prospectos con su mensaje listo](docs/capturas/contactar-hoy.jpg)
+```
+Buscar ──► Enriquecer ──► Puntuar ──► Redactar ──► Aprobar ──► Enviar ──► Seguir ──► Cerrar
+Google     web, correo,   0–100 y     mensaje      un clic    WhatsApp    a los N    respuestas
+Maps       redes, WA      servicio    por lead     tuyo                   días       en el chat
+```
 
 ---
 
-## Contenido
+## Índice
 
 - [Qué hace](#qué-hace)
-- [Guía de uso (paso a paso)](#guía-de-uso-paso-a-paso)
-- [Cómo se calcula el potencial de venta](#cómo-se-calcula-el-potencial-de-venta)
+- [Cómo decide a quién venderle](#cómo-decide-a-quién-venderle)
 - [Modos de WhatsApp](#modos-de-whatsapp)
-- [Instalación](#instalación)
-- [Configuración (.env)](#configuración-env)
+- [Envío seguro](#envío-seguro)
+- [Pantallas](#pantallas)
+- [Arquitectura](#arquitectura)
+- [Instalación local](#instalación-local)
+- [Configuración](#configuración)
 - [Problemas frecuentes](#problemas-frecuentes)
-- [Para desarrolladores](#para-desarrolladores)
+- [Desarrollo y pruebas](#desarrollo-y-pruebas)
+- [API principal](#api-principal)
 - [Producción](#producción)
 - [Uso responsable](#uso-responsable)
 
@@ -25,116 +30,51 @@ Pensado para agencias y freelancers que venden páginas web, marketing digital, 
 
 ## Qué hace
 
-| | |
-| --- | --- |
-| 🔎 **Busca negocios reales** | Escribe qué buscas y dónde («odontólogos» en «Cedritos, Bogotá»). La búsqueda corre en segundo plano con barra de progreso. |
-| 🧩 **Completa los datos** | WhatsApp (en formato internacional), Instagram, Facebook, correo y página web. Detecta cuando la «web» es en realidad un Instagram, un Linktree o un directorio. |
-| 🎯 **Califica de 0 a 100** | Cada negocio recibe un **potencial de venta** y muestra *por qué*: buena reputación + sin página propia = oportunidad alta. |
-| 💬 **Contactar hoy** | Lista diaria con los mejores prospectos aún sin contactar y un mensaje personalizado y editable. Un toque abre WhatsApp con el mensaje listo. |
-| 🔁 **Seguimientos automáticos** | A los 3 días el negocio vuelve a aparecer con un mensaje de seguimiento. Tras 3 intentos sin respuesta, Jarvis deja de insistir. |
-| 🛑 **Respeta el «no»** | Si alguien responde «no me interesa» o «no escriban más», queda marcado como *No contactar* y sale de todas las listas. |
-| 🤖 **Agente de IA (opcional)** | Responde las preguntas de los prospectos usando solo la información de tu negocio; si no sabe, pasa la conversación a una persona. |
-| 📱 **Funciona en el celular** | Toda la aplicación está adaptada a computador y móvil. |
+| Paso | Qué ocurre | Dónde vive |
+|---|---|---|
+| **1. Buscar** | Escribes `dentistas en Madrid` o `dentists in Miami`. Jarvis detecta rubro, ciudad y país, geocodifica la ciudad y lanza la búsqueda en Google Maps **en segundo plano**, con progreso por etapas. | `import_leads_job`, `GoogleMapsScraperAdapter` |
+| **2. Limpiar** | Descarta negocios cerrados, deduplica (teléfono, dominio, nombre+dirección) y separa redes sociales y directorios (Tripadvisor, Rappi…) que Google muestra como "sitio web". | `ImportLeadsFromScraperUseCase`, `lead_enrichment` |
+| **3. Enriquecer** | Extrae correos, normaliza el teléfono al formato internacional del país y detecta si es celular (WhatsApp). Audita en paralelo cada web: HTTPS, móvil, velocidad, SEO, chatbot, redes. | `enrich_imported_leads` |
+| **4. Puntuar** | Oportunidad de 0 a 100 y **qué servicio venderle**, con las razones. | `LeadScoringService` |
+| **5. Redactar** | Mensaje personalizado: usted en Colombia, tú en España, inglés en EE. UU. | `OutreachMessageService` |
+| **6. Aprobar y enviar** | En modo asistido abres WhatsApp con el texto listo; con OpenWA o la API oficial, Jarvis envía solo con límites y horario. | `/approvals`, `/outreach` |
+| **7. Seguir** | Si no responde en N días, deja listo un seguimiento. Si responde, se cancela lo pendiente. | `mark_follow_up_due` |
+| **8. Atender** | Las respuestas llegan a **Conversaciones**, donde puedes contestar. "NO" o "STOP" bloquea al contacto para siempre. | `/conversations`, webhooks |
 
-<table>
-  <tr>
-    <td width="70%"><img src="docs/capturas/leads.jpg" alt="Leads ordenados por potencial de venta"></td>
-    <td width="30%"><img src="docs/capturas/movil-contactar-hoy.jpg" alt="Contactar hoy en el celular"></td>
-  </tr>
-</table>
+El **Piloto automático** repite los pasos 1–5 solo (cada día, cada 3 días o cada semana) para las combinaciones de rubros y ciudades que definas.
 
 ---
 
-## Guía de uso (paso a paso)
+## Cómo decide a quién venderle
 
-### 1. Crea tu cuenta
-Abre http://localhost:3000, pulsa **Comenzar gratis** y regístrate. Se crea tu organización con un espacio de trabajo llamado *Principal*.
+Cada lead se evalúa contra todos los servicios y se queda con el de mayor puntaje. Además de la necesidad pesa la **capacidad de pago**: reseñas, rating y si tiene canal de contacto.
 
-### 2. Cuéntale a Jarvis qué vendes
-Ve a **Configuración** y completa:
-- **¿Qué vendes?** (ej.: «Páginas web para negocios locales»).
-- **Agente de IA**: precios, servicios, tiempos de entrega, horario y preguntas frecuentes. Solo se usa si activas el agente de IA (ver [Configuración](#configuración-env)).
+| Servicio recomendado | Señal principal | Precio (solo CO) |
+|---|---|---|
+| **Landing Page Profesional** | Sin web propia y negocio pequeño (< 100 reseñas) | desde $800.000 |
+| **Página Web Corporativa** | Sin web propia y establecido, web gratuita (Wix, Blogspot…), caída o deficiente | desde $1.500.000 |
+| **Tienda Virtual** | Comercio que vende por redes sin tienda online | desde $2.200.000 |
+| **Posicionamiento SEO** | Web activa sin título o meta descripción | desde $500.000/mes |
+| **SEO + Google Ads** | Sector competitivo (abogados, clínicas, inmobiliarias…) | desde $800.000/mes |
+| **Asistente IA WhatsApp** | Sector con muchas consultas, alto volumen de clientes, sin chatbot | desde $1.000.000 |
 
-### 3. Busca negocios
-En **Leads → Buscar negocios**:
-1. Escribe el tipo de negocio (o elige una idea: restaurantes, odontólogos, veterinarias…).
-2. Escribe la zona. **Barrio + ciudad** da mejores resultados que solo la ciudad.
-3. Elige cuántos: 20 (≈ 2 min), 50 (≈ 4 min) o 100 (≈ 8 min).
-4. Opcional: marca *Buscar también correos* (tarda aproximadamente el doble).
-
-Puedes seguir usando la aplicación mientras busca. Al terminar, Jarvis revisa automáticamente las páginas web encontradas y recalcula los puntajes.
-
-### 4. Revisa tus leads
-La tabla viene ordenada por **potencial de venta**. Usa los filtros rápidos (*Potencial alto*, *Sin página web*, *Solo redes*, *Con WhatsApp*, *Con correo*, *Sin contactar*) o el buscador. Haz clic en un negocio para abrir su ficha: motivos del puntaje, datos de contacto, enlaces a Google Maps y redes, estado comercial y la opción *No volver a contactar*.
-
-¿Agregaste negocios hace tiempo? **Actualizar datos** vuelve a completar WhatsApp/redes y recalcula todos los puntajes. **Exportar** descarga un CSV que abre directo en Excel.
-
-### 5. Personaliza tus mensajes (opcional)
-En **Plantillas** crea tus propios mensajes. Inserta datos de cada negocio con un clic:
-
-| Variable | Se reemplaza por | Ejemplo |
-| --- | --- | --- |
-| `{{negocio}}` | Nombre del negocio | Panadería La Espiga |
-| `{{categoria}}` | Categoría en Google Maps | panadería |
-| `{{ciudad}}` | Zona tomada de la dirección | Chapinero |
-| `{{calificacion}}` | Calificación en Google | 4,7 |
-| `{{resenas}}` | Número de reseñas | 312 |
-| `{{oportunidad}}` | Lo que más le falta | todavía no tiene página web propia |
-
-Si no creas ninguna, Jarvis usa un mensaje recomendado que ya incluye estos datos.
-
-### 6. Contacta todos los días
-Abre **Contactar hoy** (también está en la barra superior y en el menú del celular):
-1. Elige la plantilla y el potencial mínimo.
-2. Lee el mensaje de cada negocio y ajústalo si quieres.
-3. Pulsa **Abrir WhatsApp**, envía el mensaje y vuelve: el contador avanza y el negocio queda como *Contactado*.
-4. Usa **Saltar** para dejarlo para otro día o **No contactar** si no te interesa.
-
-Los **seguimientos para hoy** aparecen arriba en amarillo, con un mensaje de seguimiento listo.
-
-> 💡 **Rutina recomendada:** 15–20 mensajes al día, personalizando un poco cada uno. Es más efectivo que enviar cientos de mensajes iguales y protege tu número.
-
-### 7. Atiende las respuestas
-Cuando un prospecto responde, cámbialo a *Respondió*, *Interesado* o *Cliente* desde su ficha. Con la API oficial de WhatsApp activa, las respuestas llegan solas a **Conversaciones** y el estado se actualiza automáticamente.
-
-![Inicio: métricas en vivo y mejores oportunidades](docs/capturas/inicio.jpg)
-
----
-
-## Cómo se calcula el potencial de venta
-
-El puntaje responde a una pregunta: **¿qué tan probable es que este negocio te compre?** Combina qué tan sólido es el negocio con cuánto le falta en lo digital.
-
-| Señal | Puntos |
-| --- | --- |
-| Calificación en Google (4,5 o más = máximo) | hasta 15 |
-| Número de reseñas (negocio activo y con clientes) | hasta 15 |
-| Se le puede escribir (WhatsApp, teléfono, correo) | hasta 20 |
-| **No tiene página propia** (solo redes, solo directorio o nada) | 25 + 25 por el resto de carencias |
-| Tiene web pero con problemas: sin HTTPS, no carga, no apta para celular, mal SEO, lenta | 5 por cada problema |
-| Web en un subdominio gratuito (Wix, Blogger, Google Sites…) | la mitad de los puntos de «sin página» |
-
-- **70–100 · Alto:** negocio establecido sin presencia digital propia. Contáctalo primero.
-- **40–69 · Medio:** tiene algo, pero con carencias claras.
-- **0–39 · Bajo:** ya tiene buena presencia o es difícil de contactar.
-
-Un negocio con una web impecable nunca pasa de 50, porque no necesita lo que vendes.
+En España y Estados Unidos se recomienda el servicio **sin precio**. Las categorías de Google Maps se reconocen en español e inglés. Un directorio o red social **no** cuenta como página propia.
 
 ---
 
 ## Modos de WhatsApp
 
-Se eligen con la variable `WHATSAPP_PROVIDER` del archivo `.env`:
+Se eligen con `WHATSAPP_PROVIDER` en `.env`:
 
 | Modo | Cómo funciona | Costo | Recomendado para |
-| --- | --- | --- | --- |
-| `assisted` *(por defecto)* | Jarvis abre WhatsApp (web o app) con el mensaje escrito; tú pulsas enviar. | Gratis | Empezar. Sin riesgo de bloqueo porque cada envío es tuyo. |
-| `cloud_api` | API oficial de Meta (WhatsApp Business Platform): envío automático de campañas con plantillas aprobadas. Las respuestas llegan a **Conversaciones**. | Meta cobra por conversación iniciada | Volumen alto y automatización real. |
-| `openwa` | Sesión de WhatsApp Web vinculada por QR (http://localhost:8090). | Gratis | Solo pruebas con pocos mensajes: Meta puede bloquear números que automatizan WhatsApp Web. |
+|---|---|---|---|
+| `assisted` *(por defecto)* | Jarvis abre WhatsApp con el mensaje escrito y tú pulsas enviar. Registra el contacto y agenda el seguimiento. | Gratis | Empezar. Sin riesgo de bloqueo porque cada envío es tuyo. |
+| `openwa` | WhatsApp Web vinculado por QR (pantalla **WhatsApp**). Los mensajes aprobados salen solos, con límites y horario. | Gratis | Volumen bajo y pruebas: Meta puede bloquear números que automatizan WhatsApp Web. |
+| `cloud_api` | API oficial de Meta (WhatsApp Business Platform) con plantillas aprobadas. | Meta cobra por conversación | Volumen alto y automatización real. |
 
 ### Activar la API oficial de Meta (`cloud_api`)
 1. Crea una app en [developers.facebook.com](https://developers.facebook.com/) y agrega el producto **WhatsApp**.
-2. Registra tu número y crea una **plantilla de mensaje** (Meta debe aprobarla). Usa variables para personalizar.
+2. Verifica tu empresa, registra el número y crea una **plantilla de mensaje** (Meta debe aprobarla).
 3. Completa en `.env`:
    ```env
    WHATSAPP_PROVIDER=cloud_api
@@ -146,151 +86,170 @@ Se eligen con la variable `WHATSAPP_PROVIDER` del archivo `.env`:
    WHATSAPP_CLOUD_TEMPLATE_LANG=es
    WHATSAPP_CLOUD_WORKSPACE_ID=id_del_workspace_que_recibe_respuestas
    ```
-4. En Meta, configura el webhook con la URL `https://TU-DOMINIO/api/v1/whatsapp/cloud/webhook` y el mismo `VERIFY_TOKEN`. Suscríbete al campo **messages**.
+4. En Meta configura el webhook `https://TU-DOMINIO/api/v1/whatsapp/cloud/webhook` con el mismo `VERIFY_TOKEN` y suscríbete a **messages**.
 5. Reinicia: `docker compose up -d backend worker`.
 
-> El webhook necesita una URL pública con HTTPS. Para pruebas locales puedes usar un túnel (por ejemplo, Cloudflare Tunnel o ngrok).
+> El webhook necesita una URL pública con HTTPS. Para pruebas locales usa un túnel (Cloudflare Tunnel o ngrok).
 
 ---
 
-## Instalación
+## Envío seguro
 
-### Requisitos
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) con el motor iniciado.
-- Git.
-- 4 GB de RAM libres (el buscador de Google Maps usa un navegador interno).
+WhatsApp bloquea números que envían mensajes no solicitados de forma masiva. Jarvis reduce ese riesgo por diseño:
 
-### Pasos
+- **Aprobación humana**: ningún mensaje sale sin tu clic.
+- **Límite diario configurable** (40 por defecto), **1–2,5 minutos aleatorios** entre envíos y solo en **horario laboral local** del cliente (9:00–19:00, sin domingos). *(OpenWA y API oficial.)*
+- **Solo celulares**: los fijos se descartan (Colombia: empiezan por 3; España: por 6 o 7).
+- **Baja inmediata**: NO, STOP o BAJA marca "no contactar" y cancela lo pendiente.
+- **Chats personales intocables**: el webhook ignora cualquier número al que Jarvis no haya escrito; nunca crea leads ni responde a tus contactos.
+- **Webhook protegido** con `OPENWA_WEBHOOK_SECRET` y firma de Meta en la API oficial.
+- **Sin IA configurada**, las respuestas pasan a una persona en lugar de contestar mal.
+
+---
+
+## Pantallas
+
+| Pantalla | Para qué sirve |
+|---|---|
+| **Inicio** | Jarvis te dice qué hacer hoy: buscador inteligente, primeros pasos, actividad de 14 días, meta de envíos, embudo, servicios, mercados y a quién escribir primero. |
+| **Buscar clientes** | Tarjetas o tabla con filtros (oportunidad alta, WhatsApp, sin web, servicio, país, etapa), panel de detalle con contacto en un toque, acciones masivas, **Actualizar datos** y exportación CSV para Excel. |
+| **Piloto automático** | Búsquedas programadas por país × rubros × ciudades, con frecuencia, profundidad y puntaje mínimo. |
+| **Aprobar mensajes** | Mensajes escritos por Jarvis, editables. Se aprueban (envío automático) o se envían con un toque (modo asistido). |
+| **Contactar hoy** | Lista diaria priorizada de negocios con WhatsApp, con mensaje desde tus plantillas y registro del contacto. |
+| **Conversaciones** | Chat con los clientes que respondieron; puedes contestar desde Jarvis. |
+| **Campañas / Plantillas** | Envíos agrupados con plantilla. Variables: `{{negocio}}`, `{{categoria}}`, `{{ciudad}}`, `{{calificacion}}`, `{{resenas}}`, `{{oportunidad}}`. |
+| **WhatsApp** | Conexión por QR (modo OpenWA) o explicación del modo activo, uso del día y mensaje de prueba. |
+| **Configuración** | Nombre, rubro, firma, límite diario, días de seguimiento, puntaje mínimo, base de conocimiento del agente IA y estado en vivo de las integraciones. |
+
+---
+
+## Arquitectura
+
+Arquitectura hexagonal (puertos y adaptadores): el dominio y los casos de uso no conocen Google Maps, WhatsApp ni OpenAI.
+
+```
+frontend (Next.js 14) ──HTTP──► backend (FastAPI) ──► PostgreSQL 16
+                                   │      ▲
+                                   │      ├── webhook ◄── openwa (WhatsApp Web, :8090)
+                                   │      └── webhook ◄── Meta Cloud API (opcional)
+                                   ├──► google-maps-scraper (gosom, :8080)
+                                   └──► Redis ◄── worker (ARQ): búsquedas, enriquecimiento,
+                                                  piloto (cron cada 10 min), envíos, seguimientos
+```
+
+| Capa | Tecnología |
+|---|---|
+| Frontend | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS |
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2 async, Alembic, Pydantic 2 |
+| Datos y colas | PostgreSQL 16, Redis 7, ARQ |
+| Integraciones | gosom/google-maps-scraper, WhatsApp (asistido, OpenWA o Cloud API), OpenAI (opcional), Nominatim |
+
+```
+backend/app/
+├── domain/            entidades, países, enriquecimiento y reglas puras
+├── application/       casos de uso, servicios (puntaje, mensajes, auditoría web) y puertos
+└── infrastructure/    API REST, modelos SQLAlchemy, adaptadores y jobs del worker
+frontend/src/
+├── app/               pantallas (dashboard, leads, autopilot, approvals, outreach, conversations…)
+├── components/        layout, buscador inteligente, tarjetas y panel de lead, UI base
+└── lib/               cliente API (con renovación de sesión), secciones, búsqueda y CSV
+integrations/openwa/   servidor de WhatsApp Web (QR, envío, reenvío de respuestas)
+```
+
+---
+
+## Instalación local
+
+**Requisitos:** Docker Desktop con el motor iniciado y Git.
 
 ```bash
 git clone https://github.com/Santiago13dev/jarvis-scrapper.git
 cd jarvis-scrapper
-cp .env.example .env          # en Windows PowerShell: Copy-Item .env.example .env
-```
-
-Abre `.env` y cambia como mínimo `POSTGRES_PASSWORD` (también dentro de `DATABASE_URL`) y `JWT_SECRET_KEY`. Para generar una clave segura:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Luego levanta todo:
-
-```bash
+cp .env.example .env          # cambia JWT_SECRET_KEY y POSTGRES_PASSWORD
 docker compose up --build -d
 ```
 
-El primer arranque tarda unos minutos. Las migraciones de la base de datos se aplican solas. Comprueba que la API responde:
+Las migraciones se aplican solas al arrancar el backend.
 
-```bash
-curl http://localhost:8000/health
-```
+| Servicio | URL |
+|---|---|
+| Aplicación | http://localhost:3000 |
+| API y documentación | http://localhost:8000/api/docs |
+| Scraper de Google Maps | http://localhost:8080 |
+| WhatsApp (QR, modo OpenWA) | http://localhost:8090 |
 
-### Direcciones
-
-| Servicio | Dirección |
-| --- | --- |
-| **Aplicación** | http://localhost:3000 |
-| API | http://localhost:8000/api/v1 |
-| Documentación interactiva de la API | http://localhost:8000/api/docs |
-| Buscador de Google Maps (interno) | http://localhost:8080 |
-| WhatsApp Web por QR (solo modo `openwa`) | http://localhost:8090 |
-
-### Comandos útiles
-
-```bash
-docker compose ps                         # estado de los servicios
-docker compose logs -f backend worker     # ver qué está pasando
-docker compose restart worker             # tras cambiar código de las búsquedas
-docker compose down                       # apagar (los datos se conservan)
-```
+**Primeros pasos en la app:**
+1. Crea tu cuenta en `/register`.
+2. En **Configuración → Agente IA**, pulsa *Usar mis servicios de Jarvis IA*.
+3. Haz tu primera búsqueda en **Inicio**, por ejemplo `restaurantes en Medellín`.
+4. Revisa y envía los mensajes en **Aprobar mensajes** o **Contactar hoy**.
+5. Activa el **Piloto automático** para que se repita solo.
 
 ---
 
-## Configuración (.env)
+## Configuración
 
-| Variable | Para qué sirve |
-| --- | --- |
-| `ENVIRONMENT` | `development` o `production`. En producción el backend no arranca si `JWT_SECRET_KEY` sigue siendo el valor de ejemplo. |
-| `POSTGRES_*`, `DATABASE_URL` | Conexión a PostgreSQL. |
-| `REDIS_URL` | Cola de tareas en segundo plano y caché. |
-| `JWT_SECRET_KEY` | Firma de las sesiones. **Obligatorio cambiarla.** |
-| `ACCESS_TOKEN_EXPIRE_MINUTES`, `REFRESH_TOKEN_EXPIRE_DAYS` | Duración de la sesión. La aplicación la renueva sola sin pedir login. |
-| `ALLOW_PUBLIC_REGISTRATION` | `false` cierra el registro una vez creada la primera cuenta (recomendado en producción). |
-| `OPENAI_API_KEY`, `OPENAI_MODEL` | Activan el agente de IA que responde mensajes. Opcional. |
-| `WHATSAPP_PROVIDER` | `assisted`, `cloud_api` u `openwa`. Ver [Modos de WhatsApp](#modos-de-whatsapp). |
-| `WHATSAPP_CLOUD_*` | Credenciales de la API oficial de Meta. |
-| `OPENWA_BASE_URL`, `OPENWA_API_KEY` | Conexión con OpenWA. |
-| `OPENWA_WEBHOOK_SECRET` | Protege el webhook de OpenWA. Sin él, cualquiera podría inyectar mensajes falsos. |
-| `SCRAPER_LATITUDE`, `SCRAPER_LONGITUDE` | Punto de partida de las búsquedas (por defecto, Bogotá). |
-| `NEXT_PUBLIC_API_URL` | Dirección de la API que usa el navegador. |
+| Variable | Para qué |
+|---|---|
+| `ENVIRONMENT` | `development` o `production`. En producción el backend no arranca con secretos inseguros. |
+| `DATABASE_URL`, `POSTGRES_*` | Conexión a PostgreSQL |
+| `REDIS_URL` | Colas y tareas programadas |
+| `JWT_SECRET_KEY` | Firma de sesiones (mínimo 32 caracteres aleatorios en producción) |
+| `ALLOW_PUBLIC_REGISTRATION` | `false` cierra el registro tras crear la primera cuenta |
+| `WHATSAPP_PROVIDER` | `assisted`, `openwa` o `cloud_api` ([Modos de WhatsApp](#modos-de-whatsapp)) |
+| `WHATSAPP_CLOUD_*` | Credenciales de la API oficial de Meta |
+| `OPENWA_BASE_URL`, `OPENWA_WEBHOOK_SECRET` | Servidor de WhatsApp Web y secreto que protege su webhook |
+| `NEXT_PUBLIC_OPENWA_URL` | Servidor de WhatsApp para el navegador (QR, estado, prueba) |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Respuestas automáticas con IA (opcional) |
+| `SCRAPER_API_URL`, `SCRAPER_LATITUDE`, `SCRAPER_LONGITUDE` | Servicio de Google Maps y centro por defecto |
+| `NEXT_PUBLIC_API_URL` | URL pública de la API |
+
+Los ajustes comerciales (firma, límite diario, días de seguimiento, puntaje mínimo, base de conocimiento) se editan en **Configuración**, por workspace.
 
 ---
 
 ## Problemas frecuentes
 
-**La búsqueda se queda mucho tiempo en «Buscando negocios…».**
-Las búsquedas de 100 resultados pueden tardar 8–10 minutos. Si pasan más de 40 minutos, Jarvis la marca como fallida y puedes reintentar. Revisa `docker compose logs -f worker google-maps-scraper`.
+**La búsqueda tarda mucho.** Con extracción de correos, 100 resultados pueden tardar 8–10 minutos. Pasados 40 minutos se marca como fallida y puedes reintentar. Revisa `docker compose logs -f worker google-maps-scraper`.
 
-**Encuentra pocos resultados.**
-Usa una zona más específica (barrio + ciudad) y un tipo de negocio como aparece en Google Maps («odontólogo» en vez de «salud oral»).
+**Encuentra pocos resultados.** Usa una zona más específica (barrio + ciudad) y el tipo de negocio como aparece en Google Maps («odontólogo» en vez de «salud oral»).
 
-**Un negocio no tiene botón de WhatsApp.**
-Solo se detecta WhatsApp en celulares colombianos (empiezan por 3) o enlaces `wa.me` en su web. Los fijos aparecen con el botón *Llamar*.
+**Un negocio no tiene botón de WhatsApp.** Solo se detectan celulares (Colombia: 3…, España: 6/7…, EE. UU.: cualquier número de 10 dígitos) o enlaces `wa.me` en su web. Los fijos aparecen con *Llamar*.
 
-**Cambié el código y no veo los cambios (Windows).**
-Docker en Windows a veces no detecta archivos nuevos. Ejecuta `docker compose restart frontend` (o `worker` para el código de búsquedas).
+**No veo mis cambios de código (Windows).** `docker-compose.yml` activa `WATCHPACK_POLLING` para el frontend; para el worker o el servidor de WhatsApp usa `docker restart prospectai_worker` o `docker compose up -d --build openwa`.
 
-**«Sesión expirada» o te devuelve al login.**
-La sesión se renueva sola mientras uses la aplicación. Si pasan varios días sin usarla, vuelve a iniciar sesión y te llevará a la página donde estabas.
+**«Sesión expirada».** La sesión se renueva sola mientras uses la aplicación; si pasan días sin usarla, vuelve a iniciar sesión y regresarás a la página donde estabas.
 
 ---
 
-## Para desarrolladores
-
-### Tecnologías
-- **Frontend:** Next.js 14, React, TypeScript y Tailwind CSS.
-- **Backend:** FastAPI, SQLAlchemy (async), Alembic y Pydantic, con arquitectura hexagonal.
-- **Tareas en segundo plano:** ARQ + Redis (búsquedas, auditorías web, campañas).
-- **Datos:** PostgreSQL 16.
-- **Integraciones:** [gosom/google-maps-scraper](https://github.com/gosom/google-maps-scraper), WhatsApp Cloud API, OpenWA y OpenAI.
-
-### Estructura
-
-```
-backend/app/
-├── domain/          # Entidades y reglas puras (enriquecimiento, mensajes, opt-out)
-├── application/     # Casos de uso y servicios (puntaje, auditoría web)
-└── infrastructure/  # API REST, base de datos, adaptadores y workers
-frontend/src/
-├── app/             # Pantallas (leads, outreach, campaigns, settings…)
-├── components/      # Layout, leads (ficha, buscador, insignias) y UI
-└── lib/             # Cliente de API con renovación de sesión, utilidades de leads
-```
-
-Detalle técnico en [ARCHITECTURE.md](ARCHITECTURE.md) y guía para agentes de código en [AGENTS.md](AGENTS.md).
-
-### Pruebas y verificación
+## Desarrollo y pruebas
 
 ```bash
-docker exec prospectai_backend python -m pytest -q          # pruebas del backend
-docker exec prospectai_frontend npx tsc --noEmit             # tipos del frontend
-docker exec prospectai_frontend npx next lint                # lint del frontend
+cd backend && pytest -q                                  # pruebas del backend
+cd frontend && npx tsc --noEmit && npx next lint         # tipos y lint
+cd frontend && npx next build                            # build de producción
 ```
 
-### Endpoints principales (`/api/v1/workspaces/{id}/…`)
+---
 
-| Método y ruta | Uso |
-| --- | --- |
-| `POST leads/import-jobs` · `GET leads/import-jobs/{job}` | Lanzar una búsqueda y consultar su progreso |
-| `GET leads?limit=5000` | Listar leads (el límite por defecto es 50) |
-| `POST leads/enrich` | Recompletar datos y recalcular todos los puntajes |
-| `GET leads/outreach-queue` | Cola de «Contactar hoy» con mensajes renderizados |
-| `POST leads/{lead}/contacted` | Registrar un contacto y programar el seguimiento |
-| `GET follow-ups` · `PATCH follow-ups/{id}/complete` | Seguimientos pendientes |
-| `GET` / `PATCH settings` | Nombre, rubro y base de conocimiento del agente IA |
+## API principal
 
-La referencia completa está en http://localhost:8000/api/docs.
+Todo bajo `/api/v1/workspaces/{workspace_id}`. Documentación interactiva en `/api/docs`.
+
+| Método y ruta | Descripción |
+|---|---|
+| `POST /leads/import-jobs` | Búsqueda en segundo plano (`keyword`, `location`, `country`, `depth`) |
+| `GET /leads/import-jobs/{id}` | Progreso de la búsqueda |
+| `POST /leads/enrich` | Actualizar datos: WhatsApp, redes, puntaje y auditorías pendientes |
+| `GET /leads` / `PATCH /leads/{id}/status` | Leads con puntaje y servicio; cambiar etapa o "no contactar" |
+| `GET /leads/outreach-queue` | Lista diaria de "Contactar hoy" |
+| `GET /dashboard/overview` | Indicadores, actividad, embudo y mejores oportunidades |
+| `GET/POST /automation/autopilot/rules` | Reglas del piloto automático |
+| `GET /automation/outreach` | Bandeja de mensajes |
+| `POST /automation/outreach/approve` | Aprobar y programar (OpenWA / API oficial) |
+| `POST /automation/outreach/{id}/sent` | Registrar un envío hecho a mano (modo asistido) |
+| `POST /whatsapp/conversations/{id}/messages` | Responder a un cliente |
+| `GET/PATCH /settings`, `GET /settings/integrations` | Ajustes del workspace y estado de integraciones |
 
 ---
 
@@ -298,22 +257,17 @@ La referencia completa está en http://localhost:8000/api/docs.
 
 `docker-compose.yml` está pensado para desarrollo (código montado y recarga automática). Para publicar:
 
-1. Un servidor (VPS) con Docker, un dominio y HTTPS (por ejemplo, con Caddy o Traefik).
-2. `ENVIRONMENT=production`, secretos robustos y `ALLOW_PUBLIC_REGISTRATION=false` tras crear tu cuenta.
-3. Quita los montajes de código y el `--reload` del backend; compila el frontend con `next build`.
-4. No expongas los puertos de PostgreSQL, Redis, el buscador ni OpenWA a internet.
-5. Programa copias de seguridad de PostgreSQL:
-   ```bash
-   docker exec prospectai_postgres pg_dump -U prospectai -Fc prospectai > respaldo.dump
-   ```
+- [ ] Servidor con Docker, dominio y HTTPS (Caddy o Traefik).
+- [ ] `ENVIRONMENT=production`, secretos robustos, `OPENWA_WEBHOOK_SECRET` y `ALLOW_PUBLIC_REGISTRATION=false` tras crear tu cuenta.
+- [ ] Sin montajes de código ni `--reload`; frontend compilado con `next build`.
+- [ ] No exponer PostgreSQL, Redis, el scraper ni OpenWA a internet.
+- [ ] Copias de seguridad diarias: `docker exec prospectai_postgres pg_dump -U prospectai -Fc prospectai > respaldo.dump`.
+- [ ] Monitoreo de errores (por ejemplo Sentry) y alerta si el worker se detiene.
+- [ ] Para volumen alto, `WHATSAPP_PROVIDER=cloud_api` con plantillas aprobadas.
+- [ ] Tarifas en EUR/USD para España y Estados Unidos.
 
 ---
 
 ## Uso responsable
 
-Google Maps y WhatsApp son servicios de terceros con sus propios términos, y el contacto comercial está regulado (en Colombia, entre otras, la Ley 1581 de 2012 de protección de datos y la Ley 2300 de 2023 sobre horarios y canales de contacto).
-
-- Escribe solo a negocios a los que tu servicio les aporte algo, con mensajes personalizados.
-- Respeta horarios razonables: lunes a viernes de 7:00 a 19:00 y sábados de 8:00 a 15:00.
-- Respeta a quien pide no ser contactado. Jarvis lo marca automáticamente, pero también puedes hacerlo a mano.
-- Evita envíos masivos desde WhatsApp Web. Para volumen, usa la API oficial de Meta.
+Google Maps y WhatsApp son servicios de terceros con sus propios términos, y cada país regula la comunicación comercial no solicitada (Ley 1581 de 2012 en Colombia; RGPD y LSSI en España; TCPA en Estados Unidos). Contacta solo a empresas, identifica siempre quién escribe, ofrece una forma clara de darse de baja y respétala de inmediato.

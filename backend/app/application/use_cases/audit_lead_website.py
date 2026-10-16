@@ -22,7 +22,14 @@ class AuditLeadWebsiteUseCase:
         self._session = session
         self._audit_service = audit_service
 
-    async def execute(self, workspace_id: str, lead_id: str, url: str | None = None) -> WebsiteAuditResult:
+    async def execute(
+        self,
+        workspace_id: str,
+        lead_id: str,
+        url: str | None = None,
+        prefetched_result: WebsiteAuditResult | None = None,
+    ) -> WebsiteAuditResult:
+        """`prefetched_result` permite auditar muchos sitios en paralelo y persistir después en serie."""
         lead = await self._leads.get_by_id(workspace_id, lead_id)
         if lead is None:
             raise ValueError(f"Lead {lead_id} no encontrado en workspace {workspace_id}")
@@ -30,7 +37,7 @@ class AuditLeadWebsiteUseCase:
         if not target_url:
             raise ValueError("El lead no tiene sitio web para auditar")
 
-        audit_result = await self._audit_service.audit(target_url)
+        audit_result = prefetched_result or await self._audit_service.audit(target_url)
         model = await self._get_audit(lead_id)
         if model is None:
             model = WebAuditModel(lead_id=lead_id)

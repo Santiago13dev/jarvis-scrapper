@@ -2,27 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Jarvis premium: grafito neutro + verde neón reservado para lo importante.
+   Los colores de sección solo acentúan íconos y puntos, nunca fondos completos. */
 :root {
-  --bg-void: 8 10 18;
-  --bg-sidebar: 12 14 24;
-  --bg-card: 16 18 30;
-  --bg-card-hover: 20 22 36;
-  --bg-input: 14 16 28;
-  --border: 30 34 54;
-  --border-light: 40 44 68;
-  --ink: 232 234 242;
-  --ink-muted: 130 138 164;
-  --ink-dim: 80 86 110;
-  --accent: 130 90 255;
-  --accent-hover: 150 110 255;
-  --accent-dim: 80 50 180;
-  --teal: 0 210 150;
+  --bg-void: 9 10 12;
+  --bg-sidebar: 9 10 12;
+  --bg-card: 17 19 22;
+  --bg-card-hover: 22 25 29;
+  --bg-input: 13 15 18;
+  --border: 35 39 45;
+  --border-light: 50 55 63;
+  --ink: 238 240 243;
+  --ink-muted: 156 162 172;
+  --ink-dim: 104 110 120;
+  --accent: 57 255 136;       /* verde neón — acción principal */
+  --accent-hover: 120 255 175;
+  --accent-dim: 20 140 75;
+  --accent-ink: 3 12 7;       /* texto sobre verde neón */
+  --teal: 45 212 191;
   --teal-dim: 0 160 120;
-  --amber: 255 180 50;
-  --red: 240 70 80;
-  --blue: 70 140 255;
-  --pink: 230 80 180;
-  --green: 50 200 120;
+  --amber: 245 190 80;        /* aprobaciones */
+  --red: 248 113 113;
+  --blue: 96 165 250;         /* conversaciones */
+  --pink: 244 114 182;        /* plantillas */
+  --green: 57 255 136;
+  --cyan: 56 205 230;         /* buscar clientes */
+  --violet: 167 139 250;      /* piloto automático */
+  --orange: 251 146 60;       /* campañas */
+  --wa: 37 211 102;           /* WhatsApp */
 }
 
 html {
@@ -35,7 +42,48 @@ body {
 }
 
 ::selection {
-  background-color: rgb(var(--accent) / 0.35);
+  background-color: rgb(var(--accent) / 0.3);
+  color: rgb(var(--ink));
+}
+
+/* Rejilla de fondo tipo HUD */
+.hud-grid {
+  background-image:
+    linear-gradient(rgb(var(--accent) / 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(var(--accent) / 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.neon-text {
+  text-shadow: 0 0 18px rgb(var(--accent) / 0.55);
+}
+
+.neon-ring {
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.35), 0 0 28px rgb(var(--accent) / 0.18);
+}
+
+@keyframes orb-spin { to { transform: rotate(360deg); } }
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.06); opacity: 1; }
+}
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(10px); }
+  /* "none" al final: un transform residual convertiría a este contenedor en referencia de los elementos fixed */
+  to { opacity: 1; transform: none; }
+}
+@keyframes blink { 50% { opacity: 0; } }
+
+.orb-spin { animation: orb-spin 14s linear infinite; }
+.orb-spin-reverse { animation: orb-spin 9s linear infinite reverse; }
+.orb-breathe { animation: orb-breathe 3.2s ease-in-out infinite; }
+.rise-in { animation: rise-in 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.caret { animation: blink 1s step-end infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-spin, .orb-spin-reverse, .orb-breathe, .rise-in, .caret, .radar-sweep, .pulse-ring, .animate-float {
+    animation: none !important;
+  }
 }
 
 :focus-visible {
@@ -93,8 +141,8 @@ body {
 
 .mesh-gradient {
   background:
-    radial-gradient(ellipse 60% 50% at 20% 30%, rgb(var(--accent) / 0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 60% at 80% 70%, rgb(var(--blue) / 0.04) 0%, transparent 60%);
+    radial-gradient(ellipse 60% 50% at 15% 0%, rgb(var(--accent) / 0.07) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 60% at 90% 80%, rgb(var(--cyan) / 0.035) 0%, transparent 60%);
 }
 
 .card-glow {
@@ -106,7 +154,7 @@ body {
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, rgb(var(--accent) / 0.25), transparent 40%, rgb(var(--blue) / 0.15));
+  background: linear-gradient(135deg, rgb(var(--accent) / 0.35), transparent 40%, rgb(var(--cyan) / 0.15));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
@@ -120,22 +168,22 @@ body {
 
 /* Leaflet map overrides */
 .leaflet-container {
-  background: #080a12 !important;
+  background: #040606 !important;
   border-radius: inherit;
 }
 
 .leaflet-control-zoom a {
-  background: #10121e !important;
-  color: #828aa4 !important;
-  border: 1px solid rgba(30,34,54,0.5) !important;
+  background: #0c100f !important;
+  color: #92a69c !important;
+  border: 1px solid rgba(30,42,38,0.5) !important;
   width: 32px !important;
   height: 32px !important;
   line-height: 32px !important;
   font-size: 16px !important;
 }
 .leaflet-control-zoom a:hover {
-  background: #141624 !important;
-  color: #e8eaf2 !important;
+  background: #111715 !important;
+  color: #ecf6f0 !important;
 }
 .leaflet-control-zoom {
   border: none !important;
@@ -148,29 +196,29 @@ body {
 }
 
 .leaflet-popup-content-wrapper {
-  background: #10121e !important;
-  border: 1px solid rgba(30,34,54,0.8) !important;
+  background: #0c100f !important;
+  border: 1px solid rgba(30,42,38,0.8) !important;
   border-radius: 12px !important;
   box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
   padding: 0 !important;
 }
 .leaflet-popup-content {
   margin: 0 !important;
-  color: #e8eaf2 !important;
+  color: #ecf6f0 !important;
   font-size: 13px !important;
 }
 .leaflet-popup-tip {
-  background: #10121e !important;
-  border: 1px solid rgba(30,34,54,0.8) !important;
+  background: #0c100f !important;
+  border: 1px solid rgba(30,42,38,0.8) !important;
   box-shadow: none !important;
 }
 .leaflet-popup-close-button {
-  color: #828aa4 !important;
+  color: #92a69c !important;
   font-size: 18px !important;
   padding: 8px 10px 0 0 !important;
 }
 .leaflet-popup-close-button:hover {
-  color: #e8eaf2 !important;
+  color: #ecf6f0 !important;
 }
 
 @layer utilities {
@@ -185,4 +233,73 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Fondo de la consola: brillo verde/cian + rejilla HUD (una sola regla para no pisar capas) */
+.jarvis-backdrop {
+  /* Un único brillo muy tenue arriba: profundidad sin ruido */
+  background-image: radial-gradient(ellipse 70% 40% at 50% -10%, rgb(var(--accent) / 0.045) 0%, transparent 70%);
+  background-attachment: fixed;
+}
+
+@keyframes wave {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+}
+
+/* Paleta original (morada) que conserva la pantalla de login con la imagen del robot */
+.theme-classic {
+  --bg-void: 8 10 18;
+  --bg-sidebar: 12 14 24;
+  --bg-card: 16 18 30;
+  --bg-card-hover: 20 22 36;
+  --bg-input: 14 16 28;
+  --border: 30 34 54;
+  --border-light: 40 44 68;
+  --ink: 232 234 242;
+  --ink-muted: 130 138 164;
+  --ink-dim: 80 86 110;
+  --accent: 130 90 255;
+  --accent-hover: 150 110 255;
+  --teal: 0 210 150;
+  --amber: 255 180 50;
+  --red: 240 70 80;
+  --blue: 70 140 255;
+  --pink: 230 80 180;
+}
+
+@keyframes scan {
+  0%, 100% { transform: translateY(0); opacity: 0.2; }
+  50% { transform: translateY(280px); opacity: 1; }
+}
+
+/* Neón con medida: el verde brilla solo en acciones principales, puntajes y marca */
+button.bg-accent,
+a.bg-accent {
+  background-image: linear-gradient(135deg, rgb(var(--accent)) 0%, rgb(0 230 160) 100%);
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.45), 0 8px 28px -8px rgb(var(--accent) / 0.75);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, filter 0.2s ease;
+}
+button.bg-accent:hover:not(:disabled),
+a.bg-accent:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 0 1px rgb(var(--accent) / 0.7), 0 10px 36px -6px rgb(var(--accent) / 0.9);
+  transform: translateY(-1px);
+}
+button.bg-accent:disabled {
+  background-image: none;
+  box-shadow: none;
+}
+svg .stroke-accent,
+.stroke-accent {
+  filter: drop-shadow(0 0 4px rgb(var(--accent) / 0.55));
+}
+.neon-text {
+  text-shadow: 0 0 14px rgb(var(--accent) / 0.6);
+}
+.neon-dot {
+  box-shadow: 0 0 10px rgb(var(--accent) / 0.9);
 }

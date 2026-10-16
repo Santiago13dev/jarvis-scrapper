@@ -1,219 +1,170 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Ban, ExternalLink, Facebook, Globe, Instagram, Mail, MapPin, Phone, Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { api } from "@/lib/api-client";
-import { LEAD_STATUSES, contactByWhatsApp, ensureUrl, formatPhone, scoreTone } from "@/lib/leads";
+import { Check, Facebook, Globe, Instagram, Loader2, Mail, Megaphone, MessageCircle, PenLine, Phone, Star, Trash2, X } from "lucide-react";
+import { Flag } from "@/components/ui/flag";
+import { ScoreRing } from "@/components/ui/score-ring";
+import { SERVICE_META } from "@/lib/sections";
 import { cn } from "@/lib/utils";
 import type { Lead, LeadStatus } from "@/types/api";
-import { PresenceBadge, Rating, ScoreBadge, StatusBadge, WhatsAppIcon } from "./lead-badges";
+import { externalUrl, LEAD_STATUSES } from "./lead-meta";
+
+function Channel({ href, icon: Icon, label, iconClass, disabled }: { href?: string | null; icon: typeof Phone; label: string; iconClass: string; disabled?: boolean }) {
+  const base = "flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-[12px] transition-colors";
+  if (!href || disabled) {
+    return <span className={cn(base, "border-border/50 text-ink-dim/40")}><Icon size={17} /> {label}</span>;
+  }
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" className={cn(base, "border-border text-ink-muted hover:border-border-light hover:bg-white/[0.03] hover:text-ink")}>
+      <Icon size={17} className={iconClass} /> {label}
+    </a>
+  );
+}
 
 export function LeadDrawer({
-  lead,
-  workspaceId,
-  onClose,
-  onChanged,
-  onNotify,
+  lead, onClose, onStatus, onDoNotContact, onDraft, onCampaign, onDelete,
 }: {
   lead: Lead | null;
-  workspaceId: string;
   onClose: () => void;
-  onChanged: () => void;
-  onNotify: (message: string, tone?: "ok" | "error") => void;
+  onStatus: (status: LeadStatus) => Promise<void>;
+  onDoNotContact: (value: boolean) => Promise<void>;
+  onDraft: () => Promise<string>;
+  onCampaign: () => void;
+  onDelete: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
 
   useEffect(() => {
-    setConfirmDelete(false);
+    setNote(null);
     if (!lead) return;
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const handler = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [lead, onClose]);
 
   if (!lead) return null;
-  const current = lead;
-  const tone = scoreTone(current.lead_score);
-  const reasons = [...(current.score_reasons ?? [])].sort((a, b) => b.points - a.points);
-  const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${current.name} ${current.address ?? ""}`)}`;
+  const service = lead.score_niche ? SERVICE_META[lead.score_niche] : undefined;
+  const reasons = (lead.score_reasons ?? []).filter((reason) => reason.points > 0);
+  const pitch = lead.lead_score_summary?.split(". ")[0];
 
-  async function run(action: () => Promise<unknown>, success: string) {
-    setBusy(true);
-    try {
-      await action();
-      onNotify(success);
-      onChanged();
-    } catch (err) {
-      onNotify(err instanceof Error ? err.message : "No se pudo completar la acción.", "error");
-    } finally {
-      setBusy(false);
-    }
+  async function run(key: string, action: () => Promise<unknown>) {
+    setBusy(key);
+    try { await action(); } finally { setBusy(null); }
   }
 
-  const setStatus = (status: LeadStatus, doNotContact?: boolean) =>
-    run(
-      () => api.patch(`/workspaces/${workspaceId}/leads/${current.id}/status`, { status, do_not_contact: doNotContact ?? current.do_not_contact }),
-      doNotContact ? "Marcado como «no contactar»." : "Estado actualizado.",
-    );
-
   return (
-    <div className="fixed inset-0 z-[60] flex justify-end bg-void/60 backdrop-blur-sm" onClick={onClose}>
-      <aside
-        onClick={(e) => e.stopPropagation()}
-        className="flex h-full w-full flex-col overflow-y-auto border-l border-border/40 bg-card shadow-2xl sm:max-w-md"
-        aria-label={`Ficha de ${current.name}`}
-      >
-        <header className="sticky top-0 z-10 flex items-start gap-3 border-b border-border/30 bg-card/95 px-5 py-4 backdrop-blur">
-          <ScoreBadge score={current.lead_score} size="lg" />
+    <div className="fixed inset-0 z-[60] flex justify-end" role="dialog" aria-modal="true" aria-label={lead.name}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
+      <aside className="relative flex h-full w-full max-w-[480px] flex-col overflow-y-auto border-l border-border bg-card shadow-2xl [animation:rise-in_0.25s_ease-out]">
+        <header className="flex items-start gap-4 px-7 pb-6 pt-7">
+          <ScoreRing score={lead.lead_score} size={56} stroke={4} />
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-[17px] font-bold leading-tight text-ink">{current.name}</h2>
-            <p className="mt-0.5 text-[12px] text-ink-muted">{current.category ?? "Sin categoría"}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <StatusBadge status={current.status} />
-              <PresenceBadge lead={current} />
-              {current.do_not_contact && <span className="rounded-full bg-red/15 px-2 py-0.5 text-[10px] font-semibold text-red">No contactar</span>}
-            </div>
+            <h2 className="font-display text-[19px] font-semibold leading-snug tracking-tight text-ink">{lead.name}</h2>
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-ink-dim">
+              <span className="flex items-center gap-1.5"><Flag code={lead.country} /> {lead.category ?? "Negocio"}</span>
+              {lead.rating ? (
+                <span className="flex items-center gap-1"><Star size={12} className="fill-amber text-amber" /> <span className="text-ink">{lead.rating.toFixed(1)}</span> · {lead.reviews_count ?? 0} reseñas</span>
+              ) : null}
+            </p>
           </div>
-          <button onClick={onClose} aria-label="Cerrar" className="rounded-md p-1.5 text-ink-dim hover:bg-white/5 hover:text-ink">
-            <X size={16} />
-          </button>
+          <button onClick={onClose} aria-label="Cerrar" className="-mr-2 rounded-lg p-1.5 text-ink-dim hover:bg-white/[0.05] hover:text-ink"><X size={18} /></button>
         </header>
 
-        <div className="space-y-5 px-5 py-5">
-          {/* Acciones de contacto */}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              disabled={busy || !current.whatsapp || current.do_not_contact}
-              onClick={() =>
-                run(() => contactByWhatsApp(workspaceId, current.id), "WhatsApp abierto. Te recordaremos hacer seguimiento en 3 días.")
-              }
-              className="col-span-2 bg-[#25D366] text-[#06210f] shadow-none hover:bg-[#2ee26f]"
-            >
-              <WhatsAppIcon size={16} /> {current.whatsapp ? "Escribir por WhatsApp" : "Sin WhatsApp"}
-            </Button>
-            {current.phone && (
-              <a href={`tel:${current.phone.replace(/\s/g, "")}`} className="inline-flex items-center justify-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-2 text-[12px] text-ink hover:border-accent/40">
-                <Phone size={13} /> Llamar
-              </a>
-            )}
-            {current.email && (
-              <a href={`mailto:${current.email}`} className="inline-flex items-center justify-center gap-2 rounded-lg border border-border/50 bg-input px-3 py-2 text-[12px] text-ink hover:border-accent/40">
-                <Mail size={13} /> Correo
-              </a>
-            )}
-          </div>
-
-          {/* Por qué es buen prospecto */}
+        <div className="space-y-8 px-7 pb-8">
+          {/* Qué venderle y por qué */}
           <section>
-            <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-ink-dim">
-              {tone.label} {current.lead_score != null && `· ${current.lead_score}/100`}
-            </h3>
-            {reasons.length === 0 ? (
-              <p className="text-[12px] text-ink-dim">Aún sin calcular. Usa «Actualizar datos» en Leads.</p>
+            <p className="text-[12px] font-medium text-ink-dim">Qué venderle</p>
+            {service ? (
+              <p className="mt-1.5 flex items-center gap-2 text-[16px] font-semibold text-ink">
+                <span className="h-2.5 w-2.5 rounded-full" style={{ background: service.color }} /> {pitch ?? service.label}
+              </p>
             ) : (
-              <ul className="space-y-1.5">
+              <p className="mt-1.5 text-[14px] text-ink-muted">Jarvis aún está analizando este negocio.</p>
+            )}
+            {reasons.length > 0 && (
+              <ul className="mt-4 space-y-2.5">
                 {reasons.map((reason) => (
-                  <li key={reason.description} className="flex items-start justify-between gap-3 text-[12px]">
-                    <span className={reason.points > 0 ? "text-ink" : "text-ink-dim"}>{reason.description}</span>
-                    <span className={cn("shrink-0 font-mono", reason.points > 0 ? "text-teal" : "text-ink-dim")}>
-                      {reason.points > 0 ? `+${Math.round(reason.points)}` : "0"}
-                    </span>
+                  <li key={reason.description} className="flex items-start justify-between gap-4 text-[13px]">
+                    <span className="flex gap-2 text-ink-muted"><Check size={14} className="mt-0.5 shrink-0 text-accent" /> {reason.description}</span>
+                    <span className="shrink-0 tabular-nums text-ink-dim">+{Math.round(reason.points)}</span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          {/* Datos */}
-          <section className="space-y-2.5 text-[12px]">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-dim">Datos del negocio</h3>
-            <Rating rating={current.rating} reviews={current.reviews_count} />
-            {current.whatsapp && (
-              <p className="flex items-center gap-2 text-ink"><WhatsAppIcon size={13} className="text-[#25D366]" /> {formatPhone(current.whatsapp)}</p>
-            )}
-            {current.phone && <p className="flex items-center gap-2 text-ink"><Phone size={13} className="text-ink-dim" /> {current.phone}</p>}
-            {current.email && <p className="flex items-center gap-2 break-all text-ink"><Mail size={13} className="shrink-0 text-ink-dim" /> {current.email}</p>}
-            {current.address && (
-              <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="flex items-start gap-2 text-ink-muted hover:text-ink">
-                <MapPin size={13} className="mt-0.5 shrink-0 text-ink-dim" /> {current.address}
-              </a>
-            )}
-            <div className="flex flex-wrap gap-2 pt-1">
-              {current.website && <LinkChip href={current.website} icon={<Globe size={12} />} label="Página web" />}
-              {current.instagram && <LinkChip href={current.instagram} icon={<Instagram size={12} />} label="Instagram" />}
-              {current.facebook && <LinkChip href={current.facebook} icon={<Facebook size={12} />} label="Facebook" />}
-              {current.listing_url && <LinkChip href={current.listing_url} icon={<ExternalLink size={12} />} label="Ficha en directorio" />}
-              <LinkChip href={mapsUrl} icon={<MapPin size={12} />} label="Google Maps" />
+          {/* Contacto */}
+          <section>
+            <p className="mb-3 text-[12px] font-medium text-ink-dim">Contactar</p>
+            <div className="grid grid-cols-3 gap-2">
+              <Channel href={lead.whatsapp ? `https://wa.me/${lead.whatsapp}` : null} icon={MessageCircle} label="WhatsApp" iconClass="text-wa" disabled={lead.do_not_contact} />
+              <Channel href={lead.phone ? `tel:${lead.phone.replace(/\s/g, "")}` : null} icon={Phone} label="Llamar" iconClass="text-ink" disabled={lead.do_not_contact} />
+              <Channel href={lead.email ? `mailto:${lead.email}` : null} icon={Mail} label="Email" iconClass="text-blue" disabled={lead.do_not_contact} />
+              <Channel href={lead.website ? externalUrl(lead.website) : null} icon={Globe} label="Web" iconClass="text-cyan" />
+              <Channel href={lead.instagram ? externalUrl(lead.instagram) : null} icon={Instagram} label="Instagram" iconClass="text-pink" />
+              <Channel href={lead.facebook ? externalUrl(lead.facebook) : null} icon={Facebook} label="Facebook" iconClass="text-blue" />
             </div>
-          </section>
-
-          {/* Seguimiento comercial */}
-          <section className="space-y-2.5">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-dim">Seguimiento</h3>
-            <p className="text-[12px] text-ink-muted">
-              {current.contact_attempts > 0
-                ? `Contactado ${current.contact_attempts} ${current.contact_attempts === 1 ? "vez" : "veces"}, la última el ${new Date(current.last_contacted_at ?? "").toLocaleDateString("es-CO", { day: "numeric", month: "long" })}.`
-                : "Todavía no lo has contactado."}
-            </p>
-            <label className="block text-[11px] text-ink-dim">Estado</label>
-            <select
-              value={current.status}
-              disabled={busy}
-              onChange={(e) => void setStatus(e.target.value as LeadStatus)}
-              className="w-full rounded-lg border border-border/50 bg-input px-3 py-2 text-[13px] text-ink outline-none focus:border-accent/50"
-            >
-              {LEAD_STATUSES.map((status) => (
-                <option key={status.value} value={status.value}>{status.label}</option>
-              ))}
-            </select>
-            <button
-              disabled={busy}
-              onClick={() => void setStatus(current.do_not_contact ? current.status : "lost", !current.do_not_contact)}
-              className={cn(
-                "flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-medium",
-                current.do_not_contact ? "border-border/50 text-ink-muted hover:text-ink" : "border-red/30 text-red hover:bg-red/10",
+            <dl className="mt-5 space-y-3 text-[13px]">
+              {lead.phone && <div className="flex justify-between gap-4"><dt className="text-ink-dim">Teléfono</dt><dd className="tabular-nums text-ink">{lead.phone}</dd></div>}
+              {lead.email && <div className="flex justify-between gap-4"><dt className="text-ink-dim">Email</dt><dd className="truncate text-ink">{lead.email}</dd></div>}
+              {lead.address && <div className="flex justify-between gap-4"><dt className="shrink-0 text-ink-dim">Dirección</dt><dd className="text-right text-ink-muted">{lead.address}</dd></div>}
+              {lead.listing_url && (
+                <div className="flex justify-between gap-4">
+                  <dt className="shrink-0 text-ink-dim">Ficha en directorio</dt>
+                  <dd className="truncate"><a href={externalUrl(lead.listing_url)} target="_blank" rel="noopener noreferrer" className="text-ink underline underline-offset-4">Abrir</a></dd>
+                </div>
               )}
-            >
-              <Ban size={13} /> {current.do_not_contact ? "Permitir contactarlo de nuevo" : "No volver a contactar"}
-            </button>
+              {lead.contact_attempts > 0 && (
+                <div className="flex justify-between gap-4">
+                  <dt className="shrink-0 text-ink-dim">Contactado</dt>
+                  <dd className="text-ink-muted">
+                    {lead.contact_attempts} {lead.contact_attempts === 1 ? "vez" : "veces"}
+                    {lead.last_contacted_at ? ` · ${new Date(lead.last_contacted_at).toLocaleDateString("es-CO", { day: "numeric", month: "short" })}` : ""}
+                  </dd>
+                </div>
+              )}
+            </dl>
           </section>
 
-          <section className="border-t border-border/30 pt-4">
-            {confirmDelete ? (
-              <div className="flex items-center gap-2">
-                <span className="flex-1 text-[12px] text-ink-muted">¿Eliminar este lead definitivamente?</span>
-                <Button variant="secondary" onClick={() => setConfirmDelete(false)}>No</Button>
-                <Button
-                  variant="danger"
-                  disabled={busy}
-                  onClick={() => run(() => api.delete(`/workspaces/${workspaceId}/leads/${current.id}`), "Lead eliminado.").then(onClose)}
-                >
-                  Sí, eliminar
-                </Button>
-              </div>
-            ) : (
-              <button onClick={() => setConfirmDelete(true)} className="flex items-center gap-2 text-[12px] text-ink-dim hover:text-red">
-                <Trash2 size={13} /> Eliminar lead
-              </button>
-            )}
+          {/* Etapa */}
+          <section>
+            <p className="mb-3 text-[12px] font-medium text-ink-dim">Etapa</p>
+            <div className="flex flex-wrap gap-1.5">
+              {LEAD_STATUSES.map((item) => (
+                <button key={item.value} onClick={() => run(`status-${item.value}`, () => onStatus(item.value))} disabled={!!busy}
+                  className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12.5px] transition-colors",
+                    lead.status === item.value ? "border-border-light bg-white/[0.08] text-ink" : "border-border text-ink-muted hover:border-border-light hover:text-ink")}>
+                  {busy === `status-${item.value}` ? <Loader2 size={12} className="animate-spin" /> : <span className={cn("h-1.5 w-1.5 rounded-full", item.dot)} />}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 text-[13px]">
+              <span>
+                <span className="block text-ink">No volver a contactar</span>
+                <span className="block text-[12px] text-ink-dim">Jarvis nunca le escribirá ni le hará seguimiento.</span>
+              </span>
+              <input type="checkbox" checked={lead.do_not_contact} onChange={(event) => run("dnc", () => onDoNotContact(event.target.checked))} className="h-4 w-4 shrink-0 accent-[#f87171]" />
+            </label>
           </section>
+
+          {note && <p className="rounded-xl bg-white/[0.04] px-4 py-3 text-[13px] text-ink-muted">{note}</p>}
         </div>
+
+        <footer className="sticky bottom-0 mt-auto flex gap-2 border-t border-border bg-card px-7 py-4">
+          <button
+            onClick={() => run("draft", async () => setNote(await onDraft()))}
+            disabled={!!busy || !lead.whatsapp || lead.do_not_contact}
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-[13.5px] font-semibold text-accent-ink transition-colors hover:bg-accent-hover disabled:bg-white/[0.06] disabled:text-ink-dim"
+            title={!lead.whatsapp ? "Este negocio no tiene un celular con WhatsApp" : undefined}
+          >
+            {busy === "draft" ? <Loader2 size={15} className="animate-spin" /> : <PenLine size={15} />} Que Jarvis le escriba
+          </button>
+          <button onClick={onCampaign} title="Agregar a campaña" className="rounded-lg border border-border px-3 text-ink-muted hover:border-border-light hover:text-ink"><Megaphone size={16} /></button>
+          <button onClick={onDelete} title="Eliminar lead" className="rounded-lg border border-border px-3 text-ink-muted hover:border-red/40 hover:text-red"><Trash2 size={16} /></button>
+        </footer>
       </aside>
     </div>
-  );
-}
-
-function LinkChip({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
-  return (
-    <a
-      href={ensureUrl(href)}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-input px-2.5 py-1 text-[11px] text-ink-muted hover:border-accent/40 hover:text-ink"
-    >
-      {icon} {label}
-    </a>
   );
 }

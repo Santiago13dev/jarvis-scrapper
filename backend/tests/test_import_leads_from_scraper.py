@@ -54,3 +54,30 @@ async def test_import_merges_duplicates_before_persisting() -> None:
     assert len(result.imported) == 1
     assert len(repository.created) == 1
     assert repository.updated == 0
+
+
+class ClosedBusinessScraper(FakeScraper):
+    async def search(self, query: ScrapeQuery) -> list[ScrapedBusiness]:
+        return [
+            ScrapedBusiness(
+                "Cerrado", "Calle 2", "300999", None, "Bar", None, None, None, None, "place-2",
+                permanently_closed=True,
+            ),
+            ScrapedBusiness(
+                "Abierto", "Calle 3", "300888", None, "Bar", None, None, None, None, "place-3",
+                emails=("hola@abierto.co",), instagram="https://instagram.com/abierto",
+            ),
+        ]
+
+
+@pytest.mark.asyncio
+async def test_import_skips_closed_businesses_and_keeps_contact_data() -> None:
+    repository = FakeLeadRepository()
+    use_case = ImportLeadsFromScraperUseCase(ClosedBusinessScraper(), repository, FakeEventBus())
+
+    result = await use_case.execute(ImportLeadsRequest(workspace_id="workspace-1", keyword="bares", location="Bogota"))
+
+    assert result.skipped_closed == 1
+    assert [lead.name for lead in result.imported] == ["Abierto"]
+    assert result.imported[0].email == "hola@abierto.co"
+    assert result.imported[0].instagram == "https://instagram.com/abierto"

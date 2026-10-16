@@ -50,7 +50,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-3 sm:gap-4">
             <Link href="/login" className="whitespace-nowrap text-[13px] text-ink-muted hover:text-ink transition-colors">Iniciar sesión</Link>
-            <Link href="/register" className="hidden items-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-white hover:bg-accent-hover sm:inline-flex">
+            <Link href="/register" className="hidden items-center gap-2 whitespace-nowrap rounded-lg bg-accent px-4 py-2 text-[13px] font-medium text-accent-ink hover:bg-accent-hover sm:inline-flex">
               Comenzar gratis <ArrowRight size={14} />
             </Link>
           </div>
@@ -60,12 +60,12 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative px-4 pb-20 pt-28 sm:px-6 sm:pt-32">
         <div className="absolute inset-0" style={{
-          backgroundImage: `radial-gradient(ellipse 60% 50% at 30% 40%, rgba(130,90,255,0.08) 0%, transparent 60%),
+          backgroundImage: `radial-gradient(ellipse 60% 50% at 30% 40%, rgba(57,255,136,0.08) 0%, transparent 60%),
             radial-gradient(ellipse 50% 60% at 70% 60%, rgba(70,140,255,0.05) 0%, transparent 60%)`,
         }} />
         <div className="absolute inset-0" style={{
-          backgroundImage: `linear-gradient(rgba(130,90,255,0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(130,90,255,0.03) 1px, transparent 1px)`,
+          backgroundImage: `linear-gradient(rgba(57,255,136,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(57,255,136,0.03) 1px, transparent 1px)`,
           backgroundSize: "60px 60px",
         }} />
 
@@ -87,7 +87,7 @@ export default function LandingPage() {
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
             <Link href="/register">
-              <Button className="bg-accent hover:bg-accent-hover text-white text-base px-8 py-3 h-auto">
+              <Button className="bg-accent hover:bg-accent-hover text-accent-ink text-base px-8 py-3 h-auto">
                 Empezar ahora <ArrowRight size={16} />
               </Button>
             </Link>
@@ -130,7 +130,7 @@ export default function LandingPage() {
           <h2 className="font-display text-2xl font-bold text-ink mb-4 sm:text-3xl">¿Listo para conseguir tus próximos clientes?</h2>
           <p className="text-ink-muted mb-8">Haz tu primera búsqueda en menos de 5 minutos.</p>
           <Link href="/register">
-            <Button className="bg-accent hover:bg-accent-hover text-white text-base px-8 py-3 h-auto">
+            <Button className="bg-accent hover:bg-accent-hover text-accent-ink text-base px-8 py-3 h-auto">
               Crear cuenta gratis <ArrowRight size={16} />
             </Button>
           </Link>

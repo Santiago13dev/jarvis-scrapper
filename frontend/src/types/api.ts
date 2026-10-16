@@ -26,6 +26,7 @@ export interface Lead {
   facebook: string | null;
   /** Ficha en directorio (Restaurant Guru, Tripadvisor…) que Maps mostraba como «sitio web». */
   listing_url: string | null;
+  country: string | null;
   category: string | null;
   rating: number | null;
   reviews_count: number | null;
@@ -33,6 +34,8 @@ export interface Lead {
   lead_score_summary: string | null;
   score_level: "high" | "medium" | "low" | null;
   score_reasons: ScoreReason[];
+  /** Servicio recomendado por Jarvis: landing, web, ecommerce, seo, ads o whatsapp_ai. */
+  score_niche: string | null;
   status: LeadStatus;
   owner_user_id: string | null;
   last_contacted_at: string | null;
@@ -54,6 +57,7 @@ export interface ImportJob {
   id: string;
   keyword: string;
   location: string;
+  country: string;
   max_results: number;
   extract_emails: boolean;
   status: "queued" | "running" | "done" | "failed";
@@ -174,4 +178,82 @@ export interface WorkspaceSettings {
   knowledge_base: string;
   whatsapp_provider: "assisted" | "cloud_api" | "openwa";
   ai_enabled: boolean;
+  outreach_signature: string;
+  daily_send_limit: number;
+  follow_up_days: number;
+  min_score: number;
+}
+
+export interface Country {
+  code: string;
+  name: string;
+  language: string;
+  show_prices: boolean;
+  cities: string[];
+}
+
+export interface AutopilotRule {
+  id: string;
+  name: string;
+  country: string;
+  keywords: string[];
+  locations: string[];
+  depth: number;
+  frequency_hours: number;
+  min_score: number;
+  is_active: boolean;
+  is_running: boolean;
+  last_run_at: string | null;
+  next_run_at: string | null;
+  last_result: { new_leads: number; drafted: number; searches: number; errors: string[]; finished_at: string } | null;
+  total_leads_found: number;
+  created_at: string;
+}
+
+export type OutreachStatus = "pending_approval" | "approved" | "sent" | "failed" | "rejected";
+
+export interface OutreachDraft {
+  id: string;
+  lead_id: string;
+  lead_name: string;
+  lead_category: string | null;
+  lead_country: string | null;
+  lead_score: number | null;
+  service: string | null;
+  kind: "first_touch" | "follow_up";
+  to_phone: string;
+  message: string;
+  status: OutreachStatus;
+  scheduled_for: string | null;
+  sent_at: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface OutreachActionResult {
+  affected: number;
+  first_scheduled_for: string | null;
+  last_scheduled_for: string | null;
+}
+
+export interface DashboardOverview {
+  total_leads: number;
+  high_opportunity: number;
+  new_last_7_days: number;
+  with_whatsapp: number;
+  pending_approvals: number;
+  scheduled_messages: number;
+  sent_today: number;
+  daily_send_limit: number;
+  sent_last_30_days: number;
+  replied: number;
+  won: number;
+  pipeline: Record<string, number>;
+  by_service: Record<string, number>;
+  by_country: Record<string, number>;
+  leads_per_day: { date: string; count: number }[];
+  top_opportunities: { id: string; name: string; category: string | null; country: string | null; score: number; service: string | null; has_whatsapp: boolean }[];
+  autopilot: { active_rules: number; running_rules: number; next_run_at: string | null };
+  activity: { kind: "found" | "drafted" | "sent" | "replied"; at: string; count: number; detail: string | null; country: string | null }[];
+  last_14_days: { leads: number; drafted: number; sent: number; replies: number };
 }

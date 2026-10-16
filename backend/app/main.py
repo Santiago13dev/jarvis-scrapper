@@ -9,12 +9,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.infrastructure.api.v1.ai.router import router as ai_router
-from app.infrastructure.api.v1.workspaces.router import router as workspace_settings_router
 from app.infrastructure.api.v1.auth.router import router as auth_router
+from app.infrastructure.api.v1.automation.router import router as automation_router
 from app.infrastructure.api.v1.campaigns.router import router as campaigns_router
 from app.infrastructure.api.v1.dashboard.router import router as dashboard_router
 from app.infrastructure.api.v1.leads.router import router as leads_router
 from app.infrastructure.api.v1.prospecting.router import router as prospecting_router
+from app.infrastructure.api.v1.settings.router import router as settings_router
 from app.infrastructure.api.v1.follow_ups.router import router as follow_ups_router
 from app.infrastructure.api.v1.templates.router import router as templates_router
 from app.infrastructure.api.v1.users.router import router as users_router
@@ -69,7 +70,8 @@ def create_app() -> FastAPI:
     app.include_router(whatsapp_router, prefix=f"{workspace_prefix}/whatsapp", tags=["whatsapp"])
     app.include_router(dashboard_router, prefix=f"{workspace_prefix}/dashboard", tags=["dashboard"])
     app.include_router(ai_router, prefix=f"{workspace_prefix}/ai", tags=["ai"])
-    app.include_router(workspace_settings_router, prefix=f"{workspace_prefix}/settings", tags=["workspaces"])
+    app.include_router(automation_router, prefix=f"{workspace_prefix}/automation", tags=["automation"])
+    app.include_router(settings_router, prefix=f"{workspace_prefix}/settings", tags=["settings"])
 
     @app.get("/health", tags=["health"])
     async def health_check():
